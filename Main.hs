@@ -50,13 +50,15 @@ repl str = do
 　　　　　　let typed = either (error . show) id (typing extenv syn)
       putStrLn "Typed AST:"
       print typed
-      let kn = kNormal typed
+      let kn = kNormal extenv typed
       putStrLn "k-normal form:"
       print kn
       let al = alpha kn
       print al
-      let clos = trans al
-      print clos
+      let clos@(cexp, cfuns) = trans al
+      putStrLn "closure transformed:"
+      mapM print cfuns
+      print cexp
     Left x -> error x
 
 main :: IO ()

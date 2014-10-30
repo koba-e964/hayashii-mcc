@@ -1,15 +1,18 @@
+{-# LANGUAGE FlexibleContexts #-}
 module KNormal where
 
 import Control.Monad
+import Control.Monad.Reader
 import Data.Set (Set, difference, union)
 import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Debug.Trace
 
-import Id (CounterT, Id(Id), runCounter)
+import Id (CounterT, Id(Id), runCounterT)
 import qualified Id as Id
 import Type
+import Typing
 import Syntax hiding (name, args, body)
 import qualified Syntax
 
@@ -72,7 +75,7 @@ insertLet (e, t) k =
 
 
 -- knormal routine. This routine normalizes expressions and adds types to them.
-kNormalSub :: Monad m => Map Id Type -> Syntax -> CounterT m (KNormal, Type)
+kNormalSub :: (Monad m, MonadReader TypeEnv m) => Map Id Type -> Syntax -> CounterT m (KNormal, Type)
 kNormalSub env expr = case expr of
   Unit -> return (KUnit, TUnit)
   Bool b -> return (KInt (if b then 1 else 0), TInt)
@@ -125,7 +128,17 @@ kNormalSub env expr = case expr of
       (e2', t2) <- kNormalSub env' e2
       (e1', _t1) <- kNormalSub (Map.fromList yts `Map.union` env') e1
       return (KLetRec (KFundef { name = (x, t), args = yts, body = e1' }) e2', t2)
-  App (Var f) _e2s | Map.notMember f env -> error "extfun-call not impl" -- call of external functions
+  App (Var f) e2s | Map.notMember f env -> do
+    maybeTy <- asks (Map.lookup f)
+    case maybeTy of
+      Just (TFun _ t) -> 
+        let bind xs ls = case ls of
+              [] -> return (KExtFunApp f xs, t)
+              e2 : e2s -> do
+                sub <- kNormalSub env e2
+                insertLet sub (\x -> bind (xs ++ [x]) e2s) in
+          bind [] e2s
+      _ -> error "error 138-30"
   App e1 e2s -> do
       result <- kNormalSub env e1
       trace ("result = " ++ show result) $ case result of
@@ -182,9 +195,9 @@ kNormalSub env expr = case expr of
             (\ y -> insertLet k3
                 (\ z -> return (KPut x y z, TUnit))))
 
-kNormalM :: Monad m => Syntax -> CounterT m KNormal
+kNormalM :: Monad m => Syntax -> CounterT (ReaderT TypeEnv m) KNormal
 kNormalM e = liftM fst (kNormalSub Map.empty e)
 
-kNormal :: Syntax -> KNormal
-kNormal e = runCounter (kNormalM e)
+kNormal :: TypeEnv -> Syntax -> KNormal
+kNormal extenv e = runReader (runCounterT (kNormalM e)) extenv
 
