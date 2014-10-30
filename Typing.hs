@@ -6,6 +6,7 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Debug.Trace
 
 import Id
 import Syntax
@@ -30,16 +31,13 @@ type UnifyEnv = Map String Type
 -- | If type variable x occurs in y, occur x y returns True.
 occur :: String -> Type -> Bool
 occur x (TVar y) = x == y
-occur x (TFun ys y) = all (occur x) ys || occur x y
-occur x (TTuple ys) = all (occur x) ys
+occur x (TFun ys y) = any (occur x) ys || occur x y
+occur x (TTuple ys) = any (occur x) ys
 occur x (TArray y) = occur x y
 occur _ _ = False
 
 unify :: Type -> Type -> M ()
-unify TUnit TUnit = return ()
-unify TInt TInt = return ()
-unify TBool TBool = return ()
-unify TFloat TFloat = return ()
+unify x y | x == y = return ()
 unify tx@(TFun xs x) ty@(TFun ys y) = do
   when (length xs /= length ys) (throwError (UnifyError tx ty))
   zipWithM_ unify xs ys
@@ -49,11 +47,11 @@ unify tx@(TTuple xs) ty@(TTuple ys) = do
   zipWithM_ unify xs ys
 unify (TArray x) (TArray y) = unify x y
 unify (TVar x) y = do
+  when (occur x y) $ throwError $ UnifyError (TVar x) y
   hasX <- lift $ gets (Map.lookup x)
   case hasX of
     Just ty -> unify ty y
     Nothing -> do -- add to environment
-      when (occur x y) $ throwError $ UnifyError (TVar x) y
       lift $ modify (Map.insert x y)
       return ()
 unify x y@(TVar _) = unify y x
@@ -181,7 +179,7 @@ assignType (TVar x) = do
   hasX <- lift $ gets (Map.lookup x)
   case hasX of
     Just ty -> assignType ty
-    Nothing -> throwError (MiscError "not found" Unit)
+    Nothing -> trace ("Type variable " ++ x ++ " was assumed to be int\n") $ return TInt
 assignType (TFun xs x) = TFun <$> mapM assignType xs <*> assignType x
 assignType (TTuple xs) = TTuple <$> mapM assignType xs
 assignType (TArray x) = TArray <$> assignType x
