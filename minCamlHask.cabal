@@ -1,0 +1,44 @@
+name:                MinCamlHask
+version:             0.1.0.0
+synopsis:            MinCaml on Haskell
+description:         MinCaml transplanted from OCaml to Haskell
+homepage:            https://github.com/ProcessorCompilerExperiment2014-Team0/melodic/tree/min-caml-hask
+license:             BSD3
+license-file:        LICENSE
+author:              koba-e964
+maintainer:          silentkiddie-2014@yahoo.co.jp
+category:            Language
+build-type:          Simple
+-- extra-source-files:  
+cabal-version:       >=1.10
+
+executable min-caml
+  main-is:             Main.hs
+  other-modules:       MLexer, MParser
+  ghc-options:         -Wall
+  build-depends:       base >=4 && <5, array >=0.4, mtl >=2.2, containers >=0.5, primitive >=0.5, transformers >=0.3.0.0
+  hs-source-dirs:      .
+  build-tools:         alex, happy
+  default-language:    Haskell2010
+
+Test-Suite test-parser
+    type:       exitcode-stdio-1.0
+    main-is:    ParserTest.hs
+    other-modules:       MLexer, MParser
+    build-depends:       base >=4 && <5, array >=0.4, mtl >=2.2, containers >=0.5, primitive >=0.5, transformers >=0.3.0.0, test-framework >=0.8, HUnit >= 1.2, test-framework-hunit >=0.3
+    ghc-options:         -Wall
+    hs-source-dirs:      ., test/
+    build-tools:         alex, happy
+    default-language:    Haskell2010
+
+Test-Suite test-typing
+    type:       exitcode-stdio-1.0
+    main-is:    TypingTest.hs
+    other-modules:       MLexer, MParser
+    build-depends:       base >=4 && <5, array >=0.4, mtl >=2.2, containers >=0.5, primitive >=0.5, transformers >=0.3.0.0, test-framework >=0.8, HUnit >= 1.2, test-framework-hunit >=0.3
+    ghc-options:         -Wall
+    hs-source-dirs:      ., test/
+    build-tools:         alex, happy
+    default-language:    Haskell2010
+
+
