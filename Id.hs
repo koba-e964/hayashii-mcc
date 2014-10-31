@@ -6,14 +6,25 @@ import Data.String
 import Type
 
 -- Names of identifiers (both variables and/or globals).
-data Id = Id !String deriving (Eq, Ord, Show)
+newtype Id = Id String deriving (Eq, Ord)
 -- Names of variables.
-data VId = VId !String deriving (Eq, Ord, Show)
+newtype VId = VId String deriving (Eq, Ord)
 -- Names of top-level functions and/or global arrays.
-data LId = LId !String deriving (Eq, Ord, Show)
+newtype LId = LId String deriving (Eq, Ord)
+
+instance Show Id where
+  show (Id x) = x
+
+instance Show VId where
+  show (VId x) = "V:" ++ x
+
+instance Show LId where
+  show (LId x) = "L:" ++ x
 
 instance IsString Id where
   fromString = Id
+instance IsString VId where
+  fromString = VId
 instance IsString LId where
   fromString = LId
 
