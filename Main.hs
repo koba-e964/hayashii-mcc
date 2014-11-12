@@ -12,6 +12,7 @@ import Typing
 import KNormal (kNormal)
 import Alpha (alpha)
 import Closure (trans)
+import Emit
 
 
 data Config = Config { threshold :: Int, limit :: Int }
@@ -59,6 +60,9 @@ repl str = do
       putStrLn "closure transformed:"
       mapM print cfuns
       print cexp
+      asm <- emitAsm cfuns cexp
+      putStrLn "asm code:"
+      putStrLn asm
     Left x -> error x
 
 main :: IO ()

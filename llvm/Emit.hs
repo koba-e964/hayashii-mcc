@@ -3,7 +3,7 @@ module Emit where
 
 import Closure
 import qualified Id
-import Control.Monad (when)
+import Control.Monad ((>=>), when)
 import Control.Monad.State (MonadState, StateT, execStateT, gets, modify, runStateT)
 import Control.Applicative (Applicative)
 import Control.Monad.IO.Class (liftIO)
@@ -23,6 +23,8 @@ import qualified LLVM.General.AST.CallingConvention as CC
 import qualified LLVM.General.AST.Constant as C
 import qualified LLVM.General.AST.IntegerPredicate as IP
 import LLVM.General.Context (Context, withContext)
+import LLVM.General.Module
+import LLVM.General.PassManager (PassSetSpec, defaultCuratedPassSetSpec, optLevel, runPassManager, withPassManager)
 
 newtype LLVM a = LLVM { unLLVM :: StateT AST.Module (Either String) a }
   deriving (Functor, Applicative, Monad, MonadState AST.Module, MonadError String)
@@ -194,25 +196,6 @@ setBlock bname =
 getBlock :: Codegen Name
 getBlock = gets currentBlock
 
-setLoopExits :: [Name] -> Codegen ()
-setLoopExits bname =
-  modify $ \s -> s { loopExits = bname }
-
-getLoopExits :: Codegen [Name]
-getLoopExits = gets loopExits
-
-pushLoopExit :: Name -> Codegen ()
-pushLoopExit bname =
-   modify $ \s -> s { loopExits = bname : loopExits s }
-
-popLoopExit :: Codegen (Maybe Name)
-popLoopExit = do
-  result <- gets loopExits
-  case result of
-    []    -> return Nothing
-    (x:rest) -> do
-      setLoopExits rest
-      return (Just x)
 modifyBlock :: BlockState -> Codegen ()
 modifyBlock new = do
   active <- gets currentBlock
@@ -403,8 +386,55 @@ liftEither :: MonadError e m => Either e a -> m a
 liftEither (Left e) = throwError e
 liftEither (Right val) = return val
 
+liftError :: ExceptT String IO a -> IO a
+liftError = runExceptT >=> either fail return
+
+
+codegenTop :: [CFundef] -> ClosExp -> LLVM ()
+codegenTop fundefs expr = do
+  mapM emitFundef fundefs
+  define int64 "main" [] []
 
 emitFundef :: CFundef -> LLVM () 
 emitFundef (CFundef (Id.VId idt, ty) arg formFV expr) = 
   define int64 idt (map (\(Id.VId n,t) -> (int64, Name n)) arg) [] {- stub -}
+
+emitAsm :: [CFundef] -> ClosExp -> IO String
+emitAsm fns expr = liftError $ do
+         newmod <- liftEither $ codegen (emptyModule "JITtest") fns expr
+         optmod <- optimize newmod (Just 3)
+         withContextT $ \ctx -> do
+           _ <- withModuleFromAST ctx newmod $ \mm -> do
+             liftIO $ putStrLn "***** Module before optimization *****"
+             s <- liftIO $ moduleLLVMAssembly mm
+             liftIO $ putStrLn s
+           withModuleFromAST ctx optmod $ \mm -> do
+             liftIO $ putStrLn "***** Optimized Module *****"
+             s <- liftIO $ moduleLLVMAssembly mm
+             liftIO $ putStrLn s
+             return s
+
+
+-- | Compiles 'fns' in the module 'mod' and returns new module.
+codegen :: AST.Module -> [CFundef] -> ClosExp -> Either String AST.Module
+codegen astmod fns expr = newast
+  where
+    modn    = codegenTop fns expr
+    newast  = runLLVM astmod modn
+
+
+-- | Optimizes a module. Optimization level is specified in parameter 'opt'.
+optimize :: AST.Module -> Maybe Word -> ExceptT String IO AST.Module
+optimize astmod opt =
+  withContextT $ \context ->
+    withModuleFromAST context astmod $ \m ->
+      withPassManager (passes opt) $ \pm -> do
+        -- Optimization Pass
+        _ <- runPassManager pm m
+        moduleAST m
+
+-- | Returns passes whose level is 'opt'.
+passes :: Maybe Word -> PassSetSpec
+passes opt = defaultCuratedPassSetSpec { optLevel = opt }
+
 
