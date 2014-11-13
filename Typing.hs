@@ -189,6 +189,6 @@ assignType x = return x
 typing :: TypeEnv -> Syntax -> Either TypingError Syntax
 typing extenv syn = runReader (evalStateT (runExceptT $ runCounterT $ do
     prsyn <- preprocess syn
-    typingSub prsyn >>= unify TUnit
+    _ <- typingSub prsyn
     assign prsyn
   ) Map.empty) extenv

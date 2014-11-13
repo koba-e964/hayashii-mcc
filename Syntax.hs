@@ -1,6 +1,7 @@
 module Syntax where
 
 import qualified Id as Id
+import Id (Id(..))
 import qualified Type as Type
 
 -- | Data type that represents MinCaml AST.
@@ -36,3 +37,13 @@ data CmpOp
 data FloatBinOp
   = FAdd | FSub | FMul | FDiv deriving (Eq, Show)
 
+type Library = [Declare]
+
+data Declare
+  = VarDec Id Syntax
+  | FunDec Fundef
+  deriving (Eq)
+
+instance Show Declare where
+  show (VarDec (Id i) e) = i ++ ":=" ++ show e
+  show (FunDec f) = show f

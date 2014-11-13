@@ -3,9 +3,11 @@ module Emit where
 
 import Closure
 import qualified Id
-import Control.Monad ((>=>), when)
+import Id (VId(..), LId(..))
+import qualified Syntax
+import Control.Monad ((>=>), join, when)
 import Control.Monad.State (MonadState, StateT, execStateT, gets, modify, runStateT)
-import Control.Applicative (Applicative)
+import Control.Applicative (Applicative, (<$>), (<*>))
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Except (ExceptT, MonadError, runExceptT, throwError)
 import qualified Data.Map as Map
@@ -162,6 +164,13 @@ instr ins = do
   let i = stack blk
   modifyBlock (blk { stack = i ++ [ref := ins] } )
   return $ local ref
+
+addInstr :: Name -> Instruction -> Codegen ()
+addInstr ref ins = do
+  blk <- current
+  let i = stack blk
+  modifyBlock (blk { stack = i ++ [ref := ins] } )
+
 
 terminator :: Named Terminator -> Codegen (Named Terminator)
 terminator trm = do
@@ -390,10 +399,34 @@ liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return
 
 
+
+
+codegenExpr :: ClosExp -> Codegen TypedOperand
+codegenExpr CUnit = return voidValue
+codegenExpr (CInt v) = do
+  return (int32, cons $ C.Int 32 $ fromIntegral v)
+codegenExpr (CArithBin Syntax.Add (VId x) (VId y)) = do
+  ret <- join $ add <$> (load $ local $ Name x) <*> (load $ local $ Name y)
+  return (int32, ret)
+codegenExpr (CLet (VId x) ty e1 e2) = do
+  addInstr (Name x) (Alloca int32 Nothing 0 [])
+  (_, op1) <- codegenExpr e1
+  store (local $ Name x) op1
+  codegenExpr e2
+
 codegenTop :: [CFundef] -> ClosExp -> LLVM ()
 codegenTop fundefs expr = do
   mapM emitFundef fundefs
-  define int64 "main" [] []
+  (retty, codegenState) <- liftEither $ runCodegen $ do
+      entryBlock <- addBlock entryBlockName
+      _ <- setBlock entryBlock
+      (ty, val) <- codegenExpr expr
+      _ <- case ty of
+        AST.VoidType -> retNone
+        _            -> ret val
+      return ty
+  let blks = createBlocks codegenState
+  define int64 "main" [] blks
 
 emitFundef :: CFundef -> LLVM () 
 emitFundef (CFundef (Id.VId idt, ty) arg formFV expr) = 

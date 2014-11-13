@@ -11,23 +11,24 @@ import MParser (parse)
 import Typing
 import KNormal (kNormal)
 import Alpha (alpha)
-import Closure (trans)
 import Emit
+import Closure (CVardef, trans)
 
 
-data Config = Config { threshold :: Int, limit :: Int }
+data Config = Config { threshold :: !Int, limit :: !Int, glib :: ![String] }
 
 options :: [OptDescr (Config -> Config)]
 options =
   [ Option [] ["inline"] (ReqArg (\s conf -> conf { threshold = read s }) "max size of inlining") "max size of inlined function"
   , Option [] ["iter"] (ReqArg (\s conf -> conf { limit = read s }) "opt iteration") "maximum number of optimizations iterated"
+  , Option [] ["glib"] (ReqArg (\s conf -> conf { glib = s : glib conf }) "library") "ml libraries"
   ] 
 
 parseOpt :: [String] -> (Config, [String])
 parseOpt args =
   let (dat, nonOpts, errs) = getOpt Permute options args in
   if null errs then
-    (foldl (.) id dat (Config 0 1000), nonOpts)
+    (foldl (.) id dat (Config 0 1000 []), nonOpts)
   else
     error ("error on parsing command line:" ++ show errs)
 
@@ -64,6 +65,10 @@ repl str = do
       putStrLn "asm code:"
       putStrLn asm
     Left x -> error x
+
+processLib :: [String] -> IO (TypeEnv, [CVardef])
+processLib = undefined
+
 
 main :: IO ()
 main = do

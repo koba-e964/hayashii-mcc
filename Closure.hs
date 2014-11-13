@@ -44,8 +44,10 @@ data CFundef = CFundef
     , formalFV :: ![(VId, Type)]
     , body :: !ClosExp
     } deriving (Eq, Show)
+data CVardef = CVardef !Id !Type ClosExp
 
-data Prog = Prog ![CFundef] !ClosExp
+
+data Prog = Prog ![CVardef] ![CFundef] !ClosExp
 
 freeVars :: ClosExp -> Set VId
 freeVars CUnit = Set.empty

@@ -14,6 +14,7 @@ import Type
 }
 
 %name      mparse     exp
+%name      mlibparse     library
 %tokentype {Token}
 %error     {parseError} 
 %monad {Either String} {(>>=)} {Right}
@@ -178,6 +179,20 @@ pat:
     { [addType $1, addType $3] }
 ;
 
+
+library:
+  declare
+   { [$1] }
+| declare library
+   { $1 : $2 }
+;
+
+declare:
+  LET ID "=" exp
+   { VarDec $2 $4 }
+| fundef
+   { FunDec $1 }
+;
 {
 
 addType :: Id -> (Id, Type)
