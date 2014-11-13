@@ -2,10 +2,10 @@
 module Emit where
 
 import Closure
-import qualified Id
 import Id (VId(..), LId(..))
+import qualified Id
 import qualified Syntax
-import Control.Monad ((>=>), join, when)
+import Control.Monad ((>=>), join, when, liftM, ap)
 import Control.Monad.State (MonadState, StateT, execStateT, gets, modify, runStateT)
 import Control.Applicative (Applicative, (<$>), (<*>))
 import Control.Monad.IO.Class (liftIO)
@@ -13,6 +13,8 @@ import Control.Monad.Except (ExceptT, MonadError, runExceptT, throwError)
 import qualified Data.Map as Map
 import Data.Word (Word)
 import Data.List (sortBy)
+import qualified Data.List as List
+import Data.Maybe (fromJust)
 import Data.Function (on)
 import qualified Data.Map as Map
 
@@ -400,13 +402,16 @@ liftError = runExceptT >=> either fail return
 
 
 
-
 codegenExpr :: ClosExp -> Codegen TypedOperand
 codegenExpr CUnit = return voidValue
 codegenExpr (CInt v) = do
   return (int32, cons $ C.Int 32 $ fromIntegral v)
-codegenExpr (CArithBin Syntax.Add (VId x) (VId y)) = do
-  ret <- join $ add <$> (load $ local $ Name x) <*> (load $ local $ Name y)
+codegenExpr (CArithBin op (VId x) (VId y)) = do
+  let opInst = fromJust $ List.lookup op [(Syntax.Add, add), (Syntax.Sub, sub), (Syntax.Mul, mul), (Syntax.Div, Emit.div)]
+  ret <- join $ opInst <$> (load $ local $ Name x) <*> (load $ local $ Name y)
+  return (int32, ret)
+codegenExpr (CNeg (VId x)) = do
+  ret <- join $ sub (cons $ C.Int 32 0) <$> (load $ local $ Name x)
   return (int32, ret)
 codegenExpr (CLet (VId x) ty e1 e2) = do
   addInstr (Name x) (Alloca int32 Nothing 0 [])
@@ -416,7 +421,7 @@ codegenExpr (CLet (VId x) ty e1 e2) = do
 
 codegenTop :: [CFundef] -> ClosExp -> LLVM ()
 codegenTop fundefs expr = do
-  mapM emitFundef fundefs
+  mapM_ emitFundef fundefs
   (retty, codegenState) <- liftEither $ runCodegen $ do
       entryBlock <- addBlock entryBlockName
       _ <- setBlock entryBlock
@@ -426,7 +431,7 @@ codegenTop fundefs expr = do
         _            -> ret val
       return ty
   let blks = createBlocks codegenState
-  define int64 "main" [] blks
+  define int32 "main" [] blks
 
 emitFundef :: CFundef -> LLVM () 
 emitFundef (CFundef (Id.VId idt, ty) arg formFV expr) = 

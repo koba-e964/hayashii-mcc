@@ -31,7 +31,7 @@ data Fundef = Fundef { name :: !(Id.Id, Type.Type), args :: ![(Id.Id, Type.Type)
   deriving (Eq, Show)
 
 data ArithBinOp
-  = Add | Sub deriving (Eq, Show)
+  = Add | Sub | Mul | Div deriving (Eq, Show)
 data CmpOp
   = Eq | LE deriving (Eq, Show)
 data FloatBinOp
