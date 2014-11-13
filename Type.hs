@@ -1,4 +1,6 @@
 module Type where
+
+import qualified Data.List as List
 -- Datatype that represents MinCaml types.
 data Type
   = TUnit
@@ -9,7 +11,22 @@ data Type
   | TTuple ![Type]
   | TArray !Type
   | TVar !String
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance Show Type where
+  show ty = case ty of
+    TUnit -> "unit"
+    TBool -> "bool"
+    TInt -> "int"
+    TFloat -> "float"
+    TFun ls ret -> List.intercalate " * " (map parenShow ls) ++ " -> " ++ parenShow ret
+    TTuple ls -> "(" ++ List.intercalate ", " (map show ls) ++ ")"
+    TArray a -> parenShow a ++ " array"
+    TVar s -> "'" ++ s
+   where
+    parenShow ty = case ty of
+      TFun {} -> "(" ++ show ty ++ ")"
+      _       -> show ty
 
 genType :: Type
 genType = TVar ""
