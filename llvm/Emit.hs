@@ -5,6 +5,7 @@ import Closure
 import Id (VId(..), LId(..))
 import qualified Id
 import qualified Syntax
+import Type (Typed(..))
 import Control.Monad ((>=>), join, when, liftM, ap)
 import Control.Monad.State (MonadState, StateT, execStateT, gets, modify, runStateT)
 import Control.Applicative (Applicative, (<$>), (<*>))
@@ -403,21 +404,23 @@ liftError = runExceptT >=> either fail return
 
 
 codegenExpr :: ClosExp -> Codegen TypedOperand
-codegenExpr CUnit = return voidValue
-codegenExpr (CInt v) = do
+codegenExpr (CUnit :-: _) = return voidValue
+codegenExpr (CInt v :-: _) = do
   return (int32, cons $ C.Int 32 $ fromIntegral v)
-codegenExpr (CArithBin op (VId x) (VId y)) = do
+codegenExpr (CArithBin op (VId x) (VId y) :-: _) = do
   let opInst = fromJust $ List.lookup op [(Syntax.Add, add), (Syntax.Sub, sub), (Syntax.Mul, mul), (Syntax.Div, Emit.div)]
   ret <- join $ opInst <$> (load $ local $ Name x) <*> (load $ local $ Name y)
   return (int32, ret)
-codegenExpr (CNeg (VId x)) = do
+codegenExpr (CNeg (VId x) :-: _) = do
   ret <- join $ sub (cons $ C.Int 32 0) <$> (load $ local $ Name x)
   return (int32, ret)
-codegenExpr (CLet (VId x) ty e1 e2) = do
+codegenExpr (CLet (VId x) ty e1 e2 :-: _) = do
   addInstr (Name x) (Alloca int32 Nothing 0 [])
   (_, op1) <- codegenExpr e1
   store (local $ Name x) op1
   codegenExpr e2
+codegenExpr (CVar x :-: _) = do
+  undefined
 
 codegenTop :: [CFundef] -> ClosExp -> LLVM ()
 codegenTop fundefs expr = do

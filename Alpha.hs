@@ -28,7 +28,7 @@ changeBindings yts =
     return (i, newi, aty)
 
 alphaSub :: KNormal -> CounterT (Reader Env) KNormal
-alphaSub expr = case expr of
+alphaSub (expr :-: t) = fmap (:-: t) (case expr of
   KUnit -> return KUnit
   k@KInt {} -> return k
   k@KFloat {} -> return k
@@ -61,6 +61,7 @@ alphaSub expr = case expr of
   KPut x y z -> KPut <$> find x <*> find y <*> find z
   k@KExtArray {} -> return k -- external symbols are not changed
   KExtFunApp x args_ -> KExtFunApp x <$> mapM find args_
+  )
 -- alpha-conversion of expression (making variable names unique)
 alpha :: KNormal -> KNormal
 alpha expr = runReader (runCounterT (alphaSub expr)) Map.empty

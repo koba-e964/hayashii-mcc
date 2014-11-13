@@ -18,7 +18,9 @@ import qualified KNormal
 data Closure = Closure { entry :: LId, actualFV :: [VId] } deriving (Eq, Show)
 
 -- Expression after closure transformation
-data ClosExp
+type ClosExp = Typed ClosExpT
+
+data ClosExpT
   = CUnit
   | CInt !Int
   | CFloat !Float
@@ -50,24 +52,25 @@ data CVardef = CVardef !Id !Type ClosExp
 data Prog = Prog ![CVardef] ![CFundef] !ClosExp
 
 freeVars :: ClosExp -> Set VId
-freeVars CUnit = Set.empty
-freeVars (CInt {}) = Set.empty
-freeVars (CFloat {}) = Set.empty
-freeVars (CNeg x) = Set.singleton x
-freeVars (CArithBin _ x y) = Set.fromList [x, y]
-freeVars (CFNeg x) = Set.singleton x
-freeVars (CFloatBin _ x y) = Set.fromList [x, y]
-freeVars (CIf _ x y e1 e2) = Set.fromList [x, y] `union` freeVars e1 `union` freeVars e2
-freeVars (CLet x _t e1 e2) = freeVars e1 `union` Set.delete x (freeVars e2)
-freeVars (CVar x) = Set.singleton x
-freeVars (CMakeCls x _t (Closure { actualFV = ys }) e) = Set.delete x (Set.fromList ys `union` freeVars e)
-freeVars (CAppCls x ls) = Set.fromList (x : ls)
-freeVars (CAppDir _ ls) = Set.fromList ls
-freeVars (CTuple ls) = Set.fromList ls
-freeVars (CLetTuple ls x e) = Set.insert x (freeVars e `difference` Set.fromList (map fst ls))
-freeVars (CGet x y) = Set.fromList [x, y]
-freeVars (CPut x y z) = Set.fromList [x, y, z]
-freeVars (CExtArray {}) = Set.empty
+freeVars (expr :-: _) = case expr of
+    CUnit -> Set.empty
+    (CInt {}) -> Set.empty
+    (CFloat {}) -> Set.empty
+    (CNeg x) -> Set.singleton x
+    (CArithBin _ x y) -> Set.fromList [x, y]
+    (CFNeg x) -> Set.singleton x
+    (CFloatBin _ x y) -> Set.fromList [x, y]
+    (CIf _ x y e1 e2) -> Set.fromList [x, y] `union` freeVars e1 `union` freeVars e2
+    (CLet x _t e1 e2) -> freeVars e1 `union` Set.delete x (freeVars e2)
+    (CVar x) -> Set.singleton x
+    (CMakeCls x _t (Closure { actualFV = ys }) e) -> Set.delete x (Set.fromList ys `union` freeVars e)
+    (CAppCls x ls) -> Set.fromList (x : ls)
+    (CAppDir _ ls) -> Set.fromList ls
+    (CTuple ls) -> Set.fromList ls
+    (CLetTuple ls x e) -> Set.insert x (freeVars e `difference` Set.fromList (map fst ls))
+    (CGet x y) -> Set.fromList [x, y]
+    (CPut x y z) -> Set.fromList [x, y, z]
+    (CExtArray {}) -> Set.empty
 
 idToVId :: Id -> VId
 idToVId (Id x) = VId x
@@ -76,7 +79,7 @@ idToLId :: Id -> LId
 idToLId (Id x) = LId x
 
 transSub :: Map VId Type -> Set Id -> KNormal -> State [CFundef] ClosExp
-transSub env known e = case e of
+transSub env known (e :-: t) = fmap (:-: t) $ case e of
   KUnit -> return CUnit
   (KInt i) -> return $ CInt i
   (KFloat f) -> return $ CFloat f
@@ -112,11 +115,11 @@ transSub env known e = case e of
       let zs = Set.toList (freeVars e1' `difference` (Set.map idToVId (Set.insert x (Set.fromList (map fst yts)))))  -- 自由変数のリスト
       let zts = map (\z -> (z, fromJust (Map.lookup z env'))) zs -- ここで自由変数zの型を引くために引数envが必要
       modify (CFundef { name = (idToVId x, t), args = map (\(Id y, z) -> (VId y, z)) yts, formalFV = zts, body = e1' } :) -- トップレベル関数を追加
-      e2' <- transSub env' known' e2
+      e2'@(e2'cont :-: _) <- transSub env' known' e2
       if Set.member (idToVId x) (freeVars e2') then -- xが変数としてe2'に出現するか
         return $ CMakeCls (idToVId x) t (Closure { entry = idToLId x, actualFV = zs }) e2' -- 出現していたら削除しない
       else
-	return (trace ("eliminating closure(s) " ++ show x ++ "@.") e2') -- 出現しなければMakeClsを削除
+	return (trace ("eliminating closure(s) " ++ show x ++ "@.") e2'cont) -- 出現しなければMakeClsを削除
   KApp (Id x) ys | Set.member (Id x) known -> -- 関数適用の場合
       return $ trace ("directly applying " ++ x ++ "@.") (CAppDir (LId x) (map idToVId ys))
   KApp (Id f) xs -> return $ CAppCls (VId f) (map idToVId xs)
