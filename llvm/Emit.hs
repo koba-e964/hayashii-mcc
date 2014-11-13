@@ -5,7 +5,8 @@ import Closure
 import Id (VId(..), LId(..))
 import qualified Id
 import qualified Syntax
-import Type (Typed(..))
+import Type
+import qualified Type
 import Control.Monad ((>=>), join, when, liftM, ap)
 import Control.Monad.State (MonadState, StateT, execStateT, gets, modify, runStateT)
 import Control.Applicative (Applicative, (<$>), (<*>))
@@ -20,12 +21,14 @@ import Data.Function (on)
 import qualified Data.Map as Map
 
 import LLVM.General.AST (Definition(..), FloatingPointFormat(..), Instruction(..), Name(..), Named(..), Operand(..), Terminator(..), Type(..), defaultModule, moduleDefinitions, moduleName)
+import LLVM.General.AST.AddrSpace
 import LLVM.General.AST.Global (BasicBlock(BasicBlock), Parameter(Parameter), basicBlocks, functionDefaults, name, parameters, returnType)
 import qualified LLVM.General.AST.Global as Global
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Attribute as A
 import qualified LLVM.General.AST.CallingConvention as CC
 import qualified LLVM.General.AST.Constant as C
+import qualified LLVM.General.AST.Float as F
 import qualified LLVM.General.AST.IntegerPredicate as IP
 import LLVM.General.Context (Context, withContext)
 import LLVM.General.Module
@@ -70,6 +73,10 @@ external retty label argtys = addDefn $
 -- IEEE 754 double
 double :: AST.Type
 double = FloatingPointType 64 IEEE
+
+-- IEEE 754 float
+float :: AST.Type
+float = FloatingPointType 32 IEEE
 
 -- 1-bit integer (boolean)
 int1 :: AST.Type
@@ -374,6 +381,9 @@ cbr cond tr fl = do
   condBool <- int64ToBool cond
   terminator $ Do $ CondBr condBool tr fl []
 
+arrayIndex :: Operand -> Operand -> Codegen Operand
+arrayIndex a i = instr $ GetElementPtr False a [i] []
+
 phi :: [((AST.Type, Operand), Name)] -> Codegen (AST.Type, Operand)
 phi incoming = do
   when (null incoming) $ throwError $ "null phi node: " ++ show incoming
@@ -401,12 +411,23 @@ liftEither (Right val) = return val
 liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return
 
-
+typeToLLVMType :: Type.Type -> AST.Type
+typeToLLVMType ty = case ty of
+  TUnit -> AST.VoidType
+  TInt -> int32
+  TFloat -> float
+  TBool -> int1
+  TFun ls ret -> AST.FunctionType (typeToLLVMType ret) (map typeToLLVMType ls) False
+  TArray a -> AST.PointerType (typeToLLVMType a) (AddrSpace 0)
+  TTuple ls -> AST.StructureType False (map typeToLLVMType ls)
+  TVar _ -> error "unresolved type variable"
 
 codegenExpr :: ClosExp -> Codegen TypedOperand
 codegenExpr (CUnit :-: _) = return voidValue
 codegenExpr (CInt v :-: _) = do
   return (int32, cons $ C.Int 32 $ fromIntegral v)
+codegenExpr (CFloat f :-: _) = do
+  return (float, cons $ C.Float $ F.Single f)
 codegenExpr (CArithBin op (VId x) (VId y) :-: _) = do
   let opInst = fromJust $ List.lookup op [(Syntax.Add, add), (Syntax.Sub, sub), (Syntax.Mul, mul), (Syntax.Div, Emit.div)]
   ret <- join $ opInst <$> (load $ local $ Name x) <*> (load $ local $ Name y)
@@ -415,12 +436,18 @@ codegenExpr (CNeg (VId x) :-: _) = do
   ret <- join $ sub (cons $ C.Int 32 0) <$> (load $ local $ Name x)
   return (int32, ret)
 codegenExpr (CLet (VId x) ty e1 e2 :-: _) = do
-  addInstr (Name x) (Alloca int32 Nothing 0 [])
+  addInstr (Name x) (Alloca (typeToLLVMType ty) Nothing 0 [])
   (_, op1) <- codegenExpr e1
   store (local $ Name x) op1
   codegenExpr e2
-codegenExpr (CVar x :-: _) = do
-  undefined
+codegenExpr (CVar (VId x) :-: ty) = do
+  ret <- load $ local $ Name x
+  return (typeToLLVMType ty, ret)
+codegenExpr (CGet (VId x) (VId y) :-: ty) = do
+  xv <- load $ local $ Name x
+  yv <- load $ local $ Name y
+  ret <- arrayIndex xv yv >>= load
+  return (typeToLLVMType ty, ret)
 
 codegenTop :: [CFundef] -> ClosExp -> LLVM ()
 codegenTop fundefs expr = do
