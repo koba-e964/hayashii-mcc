@@ -272,6 +272,28 @@ global = C.GlobalReference int64
 externf :: Name -> Operand
 externf = ConstantOperand . C.GlobalReference double
 
+varRef :: VId -> Type.Type -> Codegen Operand
+varRef (VId x) ty = do
+  isGlobal <- asks (Map.member x)
+  if isGlobal then
+    load $ cons $ C.GlobalReference (typeToLLVMType ty) (Name x)
+  else
+    load (LocalReference (typeToLLVMType ty) (Name x))
+
+varPtr :: VId -> Type.Type -> Codegen Operand
+varPtr (VId x) ty = do
+  isGlobal <- asks (Map.member x)
+  if isGlobal then
+    return $ cons $ C.GlobalReference (typeToLLVMType ty) (Name x)
+  else
+    return $ LocalReference (typeToLLVMType ty) (Name x)
+
+localVarPtr :: VId -> Type.Type -> Operand
+localVarPtr (VId x) ty = LocalReference (typeToLLVMType ty) (Name x)
+
+localVarRef :: VId -> Type.Type -> Codegen Operand
+localVarRef (VId x) ty = load $ LocalReference (typeToLLVMType ty) (Name x)
+
 -- Arithmetic and Constants
 add :: Operand -> Operand -> Codegen Operand
 add a b = instr $ Add False False a b []
@@ -438,10 +460,16 @@ typeToLLVMType ty = case ty of
   TInt -> T.i32
   TFloat -> float
   TBool -> T.i1
-  TFun ls ret -> AST.FunctionType (typeToLLVMType ret) (map typeToLLVMType ls) False
+  TFun ls ret -> T.ptr T.i8 {- type of general closure -}
   TArray a -> AST.PointerType (typeToLLVMType a) (AddrSpace 0)
   TTuple ls -> AST.StructureType False (map typeToLLVMType ls)
   TVar _ -> error "unresolved type variable"
+
+funtypeToLLVMType :: Type.Type -> AST.Type
+funtypeToLLVMType ty = case ty of
+  TFun ls ret -> AST.FunctionType (typeToLLVMType ret) (map typeToLLVMType ls) False
+  _ -> error "not a funtype"
+
 
 codegenExpr :: ClosExp -> Codegen TypedOperand
 codegenExpr (CUnit :-: _) = return voidValue
@@ -461,26 +489,30 @@ codegenExpr (CLet (VId x) ty e1 e2 :-: _) = do
   (_, op1) <- codegenExpr e1
   _ <- store (local $ Name x) op1
   codegenExpr e2
-codegenExpr (CVar (VId x) :-: ty) = do
-  ret <- load $ local $ Name x
+codegenExpr (CVar x :-: ty) = do
+  ret <- localVarRef x ty
   return (typeToLLVMType ty, ret)
 codegenExpr (CMakeCls (VId x) t (Closure (LId topfunc) fvs) expr :-: _) = do
   formFV <- asks (formalFV . fromJust . Map.lookup x)
-  let recType = T.StructureType False (T.ptr (typeToLLVMType t) : map (\(_,t) -> typeToLLVMType t) formFV)
+  let recType = T.StructureType False (T.ptr (funtypeToLLVMType t) : map (\(_,t) -> typeToLLVMType t) formFV)
   (_, ptr) <- alloch recType
-  ptrFunc <- instr $ GetElementPtr True ptr [ci64 0] []
-  store ptrFunc (cons (C.GlobalReference (typeToLLVMType t) (Name (topfunc ++ ".cls"))))
+  ptrFunc <- instr $ GetElementPtr True ptr [ci64 0, ci32 0] []
+  store ptrFunc (cons (C.GlobalReference (funtypeToLLVMType t) (Name (topfunc))))
   -- set free variables
   forM_ [1..length formFV] $ \i -> do
-    let VId nm = fvs !! (i-1)
-    ptrElem <- instr $ GetElementPtr True ptr [ci64 (fromIntegral i)] []
-    elem <- load $ local $ Name nm
+    let nm = fvs !! (i-1)
+    ptrElem <- instr $ GetElementPtr True ptr [ci64 0, ci32 (fromIntegral i)] []
+    elem <- varRef nm (snd (formFV !! i))
     store ptrElem elem
-  bitCast (T.ptr T.i8) ptr
+  addInstr (Name x) (Alloca (typeToLLVMType t) Nothing 0 [])
+  let xvar = localVarPtr (VId x) t
+  (_, clos) <- bitCast (T.ptr T.i8) ptr
+  store xvar clos
+  codegenExpr expr
 codegenExpr (CAppDir (LId x) args :-: ty) = do
-  funTy <- asks (snd . Closure.name . fromJust . Map.lookup x)
-  let fun = cons (C.GlobalReference (typeToLLVMType funTy) (Name (x ++ ".dir")))
-  argOp <- mapM (\(VId x) -> load (local (Name x))) args
+  funTy@(TFun argTy _) <- asks (snd . Closure.name . fromJust . Map.lookup x)
+  let fun = cons (C.GlobalReference (funtypeToLLVMType funTy) (Name (x ++ ".dir")))
+  argOp <- mapM (\(x, t) -> varRef x t) (zip args argTy)
   call fun argOp (typeToLLVMType ty)
 codegenExpr (CGet (VId x) (VId y) :-: ty) = do
   xv <- load $ local $ Name x
@@ -514,7 +546,7 @@ emitFundef :: CFundef -> LLVM ()
 emitFundef (CFundef (Id.VId idt, ty) arg formFV expr) =
   case ty of
     TFun _ retty -> do
-      define (typeToLLVMType retty) (idt ++ ".cls") (map (\(Id.VId n,t) -> (typeToLLVMType t, Name n)) arg) [] {- stub -}
+      define (typeToLLVMType retty) (idt) (map (\(Id.VId n,t) -> (typeToLLVMType t, Name n)) arg) [] {- stub -}
       define (typeToLLVMType retty) (idt ++ ".dir") (map (\(Id.VId n,t) -> (typeToLLVMType t, Name n)) arg) [] {- stub -}
     _ -> throwError "not a function type"
 
