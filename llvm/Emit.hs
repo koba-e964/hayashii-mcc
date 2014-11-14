@@ -477,6 +477,11 @@ codegenExpr (CMakeCls (VId x) t (Closure (LId topfunc) fvs) expr :-: _) = do
     elem <- load $ local $ Name nm
     store ptrElem elem
   bitCast (T.ptr T.i8) ptr
+codegenExpr (CAppDir (LId x) args :-: ty) = do
+  funTy <- asks (snd . Closure.name . fromJust . Map.lookup x)
+  let fun = cons (C.GlobalReference (typeToLLVMType funTy) (Name (x ++ ".dir")))
+  argOp <- mapM (\(VId x) -> load (local (Name x))) args
+  call fun argOp (typeToLLVMType ty)
 codegenExpr (CGet (VId x) (VId y) :-: ty) = do
   xv <- load $ local $ Name x
   yv <- load $ local $ Name y
