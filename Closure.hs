@@ -88,7 +88,7 @@ transSub env known (e :-: t) = fmap (:-: t) $ case e of
   (KFNeg (Id x)) -> return $ CFNeg (VId x)
   (KFloatBin op (Id x) (Id y)) -> return $ CFloatBin op (VId x) (VId y)
   KIf cmp (Id x) (Id y) e1 e2 -> CIf cmp (VId x) (VId y) <$> transSub env known e1 <*> transSub env known e2
-  KLet (Id x) t e1 e2 -> CLet (VId x) t <$> transSub env known e1 <*> transSub env known e2
+  KLet (Id x) t e1 e2 -> CLet (VId x) t <$> transSub env known e1 <*> transSub (Map.insert (VId x) t env) known e2
   KVar (Id x) -> return $ CVar (VId x)
   KLetRec (KFundef { KNormal.name = (x@(Id n), t), KNormal.args = yts, KNormal.body = e1 }) e2 -> -- 関数定義の場合
       {- 関数定義let rec x y1 ... yn = e1 in e2の場合は、

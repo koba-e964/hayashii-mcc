@@ -7,7 +7,7 @@ import qualified Id
 import qualified Syntax
 import Type
 import qualified Type
-import Control.Monad ((>=>), join, when, liftM, ap)
+import Control.Monad ((>=>), forM_, join, when, liftM, ap)
 import Control.Monad.State (MonadState, StateT, execStateT, gets, modify, runStateT)
 import Control.Applicative (Applicative, (<$>), (<*>))
 import Control.Monad.Reader (MonadReader, ReaderT, runReaderT, asks)
@@ -465,11 +465,17 @@ codegenExpr (CVar (VId x) :-: ty) = do
   ret <- load $ local $ Name x
   return (typeToLLVMType ty, ret)
 codegenExpr (CMakeCls (VId x) t (Closure (LId topfunc) fvs) expr :-: _) = do
-  fvs <- asks (formalFV . fromJust . Map.lookup x)
-  let recType = T.StructureType False (T.ptr (typeToLLVMType t) : [])
+  formFV <- asks (formalFV . fromJust . Map.lookup x)
+  let recType = T.StructureType False (T.ptr (typeToLLVMType t) : map (\(_,t) -> typeToLLVMType t) formFV)
   (_, ptr) <- alloch recType
-  ptrFunc <- instr $ GetElementPtr False ptr [ci64 0] []
+  ptrFunc <- instr $ GetElementPtr True ptr [ci64 0] []
   store ptrFunc (cons (C.GlobalReference (typeToLLVMType t) (Name (topfunc ++ ".cls"))))
+  -- set free variables
+  forM_ [1..length formFV] $ \i -> do
+    let VId nm = fvs !! (i-1)
+    ptrElem <- instr $ GetElementPtr True ptr [ci64 (fromIntegral i)] []
+    elem <- load $ local $ Name nm
+    store ptrElem elem
   bitCast (T.ptr T.i8) ptr
 codegenExpr (CGet (VId x) (VId y) :-: ty) = do
   xv <- load $ local $ Name x
