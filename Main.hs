@@ -12,6 +12,7 @@ import Typing
 import KNormal (kNormal)
 import Alpha (alpha)
 import Emit
+import SSA
 import Closure (CVardef, trans)
 
 
@@ -61,6 +62,8 @@ repl str = do
       putStrLn "closure transformed:"
       mapM_ print cfuns
       print cexp
+      let ssa = runCounter (ssaTrans cfuns cexp)
+      print ssa
       asm <- emitAsm cfuns cexp
       putStrLn "asm code:"
       putStrLn asm
