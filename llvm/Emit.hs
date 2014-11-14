@@ -10,8 +10,10 @@ import qualified Type
 import Control.Monad ((>=>), join, when, liftM, ap)
 import Control.Monad.State (MonadState, StateT, execStateT, gets, modify, runStateT)
 import Control.Applicative (Applicative, (<$>), (<*>))
+import Control.Monad.Reader (MonadReader, ReaderT, runReaderT, asks)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Except (ExceptT, MonadError, runExceptT, throwError)
+import Data.Int (Int32, Int64)
 import qualified Data.Map as Map
 import Data.Word (Word)
 import Data.List (sortBy)
@@ -30,6 +32,7 @@ import qualified LLVM.General.AST.CallingConvention as CC
 import qualified LLVM.General.AST.Constant as C
 import qualified LLVM.General.AST.Float as F
 import qualified LLVM.General.AST.IntegerPredicate as IP
+import qualified LLVM.General.AST.Type as T
 import LLVM.General.Context (Context, withContext)
 import LLVM.General.Module
 import LLVM.General.PassManager (PassSetSpec, defaultCuratedPassSetSpec, optLevel, runPassManager, withPassManager)
@@ -82,6 +85,10 @@ float = FloatingPointType 32 IEEE
 int1 :: AST.Type
 int1 = IntegerType 1
 
+-- 8-bit integer (byte)
+int8 :: AST.Type
+int8 = IntegerType 8
+
 -- 32-bit integer
 int32 :: AST.Type
 int32 = IntegerType 32
@@ -130,8 +137,8 @@ data BlockState
 -- Codegen Operations
 -------------------------------------------------------------------------------
 
-newtype Codegen a = Codegen { unCodegen :: StateT CodegenState (Either String) a }
-  deriving (Functor, Applicative, Monad, MonadState CodegenState, MonadError String )
+newtype Codegen a = Codegen { unCodegen :: ReaderT (Map.Map String CFundef) (StateT CodegenState (Either String)) a }
+  deriving (Functor, Applicative, Monad, MonadState CodegenState, MonadReader (Map.Map String CFundef), MonadError String )
 
 sortBlocks :: [(Name, BlockState)] -> [(Name, BlockState)]
 sortBlocks = sortBy (compare `on` (idx . snd))
@@ -154,11 +161,13 @@ emptyBlock i = BlockState i [] Nothing
 emptyCodegen :: CodegenState
 emptyCodegen = CodegenState (Name entryBlockName) Map.empty [] 1 0 Map.empty []
 
-execCodegen :: Codegen a -> Either String CodegenState
-execCodegen m = execStateT (unCodegen m) emptyCodegen
+execCodegen :: [CFundef] -> Codegen a -> Either String CodegenState
+execCodegen fundefs m = fmap snd (runCodegen fundefs m)
 
-runCodegen :: Codegen a -> Either String (a, CodegenState)
-runCodegen m = runStateT (unCodegen m) emptyCodegen
+runCodegen :: [CFundef] -> Codegen a -> Either String (a, CodegenState)
+runCodegen fundefs m = runStateT (runReaderT (unCodegen m) mp) emptyCodegen
+  where
+   mp = Map.fromList (map (\cfd@(CFundef (VId n, _) _ _ _) -> (n, cfd)) fundefs)
 
 fresh :: Codegen Word
 fresh = do
@@ -236,13 +245,6 @@ assign :: String -> Operand -> Codegen ()
 assign var x = do
   lcls <- gets symtab
   modify $ \s -> s { symtab = (var, x) : lcls }
-
-getvar :: String -> Codegen Operand
-getvar var = do
-  syms <- gets symtab
-  case lookup var syms of
-    Just x  -> return x
-    Nothing -> throwError $ "Local variable not in scope: " ++ show var
 
 
 -------------------------------------------------------------------------------
@@ -354,24 +356,43 @@ int64ToBool operand = instr $ Trunc operand int1 []
 cons :: C.Constant -> Operand
 cons = ConstantOperand
 
+ci32 :: Int32 -> Operand
+ci32 v = ConstantOperand (C.Int 32 (fromIntegral v))
+
+ci64 :: Int64 -> Operand
+ci64 v = ConstantOperand (C.Int 64 (fromIntegral v))
+
+
 toArgs :: [Operand] -> [(Operand, [A.ParameterAttribute])]
 toArgs = map (\x -> (x, []))
 
 -- Effects
-call :: Operand -> [Operand] -> Codegen (AST.Type, Operand)
-call fn args = do
+call :: Operand -> [Operand] -> AST.Type -> Codegen (AST.Type, Operand)
+call fn args retty = do
   val <- instr $ Call False CC.C [] (Right fn) (toArgs args) [] []
-  return (int64, val) -- TODO support arbitrary type
+  return (retty, val)
 
 alloca :: AST.Type -> Codegen Operand
 alloca ty = instr $ Alloca ty Nothing 0 []
 
-store :: Operand -> Operand -> Codegen Operand
-store ptr val = instr $ Store False ptr val Nothing 0 []
+alloch :: AST.Type -> Codegen TypedOperand
+alloch ty = do
+  let malloc = ConstantOperand $ C.GlobalReference (AST.FunctionType (T.ptr T.i8) [T.i32]　False) (Name "malloc")
+  (_, alloced) <- call malloc [cons $ C.Int 32 16 {- TODO Not correct -}] (T.ptr T.i8)
+  ret <- instr $ BitCast alloced (T.ptr ty) []
+  return (T.ptr ty, ret)
+store :: Operand -> Operand -> Codegen ()
+store ptr val = do
+  instr $ Store False ptr val Nothing 0 []
+  return ()
 
 load :: Operand -> Codegen Operand
 load ptr = instr $ Load False ptr Nothing 0 []
 
+bitCast :: AST.Type -> Operand -> Codegen TypedOperand
+bitCast ty obj = do
+  i <- instr (BitCast obj ty [])
+  return (ty, i)
 -- Control Flow
 br :: Name -> Codegen (Named Terminator)
 br val = terminator $ Do $ Br val []
@@ -414,9 +435,9 @@ liftError = runExceptT >=> either fail return
 typeToLLVMType :: Type.Type -> AST.Type
 typeToLLVMType ty = case ty of
   TUnit -> AST.VoidType
-  TInt -> int32
+  TInt -> T.i32
   TFloat -> float
-  TBool -> int1
+  TBool -> T.i1
   TFun ls ret -> AST.FunctionType (typeToLLVMType ret) (map typeToLLVMType ls) False
   TArray a -> AST.PointerType (typeToLLVMType a) (AddrSpace 0)
   TTuple ls -> AST.StructureType False (map typeToLLVMType ls)
@@ -425,7 +446,7 @@ typeToLLVMType ty = case ty of
 codegenExpr :: ClosExp -> Codegen TypedOperand
 codegenExpr (CUnit :-: _) = return voidValue
 codegenExpr (CInt v :-: _) = do
-  return (int32, cons $ C.Int 32 $ fromIntegral v)
+  return (int32, ci32 $ fromIntegral v)
 codegenExpr (CFloat f :-: _) = do
   return (float, cons $ C.Float $ F.Single f)
 codegenExpr (CArithBin op (VId x) (VId y) :-: _) = do
@@ -433,26 +454,41 @@ codegenExpr (CArithBin op (VId x) (VId y) :-: _) = do
   ret <- join $ opInst <$> (load $ local $ Name x) <*> (load $ local $ Name y)
   return (int32, ret)
 codegenExpr (CNeg (VId x) :-: _) = do
-  ret <- join $ sub (cons $ C.Int 32 0) <$> (load $ local $ Name x)
+  ret <- join $ sub (ci32 0) <$> (load $ local $ Name x)
   return (int32, ret)
 codegenExpr (CLet (VId x) ty e1 e2 :-: _) = do
   addInstr (Name x) (Alloca (typeToLLVMType ty) Nothing 0 [])
   (_, op1) <- codegenExpr e1
-  store (local $ Name x) op1
+  _ <- store (local $ Name x) op1
   codegenExpr e2
 codegenExpr (CVar (VId x) :-: ty) = do
   ret <- load $ local $ Name x
   return (typeToLLVMType ty, ret)
+codegenExpr (CMakeCls (VId x) t (Closure (LId topfunc) fvs) expr :-: _) = do
+  fvs <- asks (formalFV . fromJust . Map.lookup x)
+  let recType = T.StructureType False (T.ptr (typeToLLVMType t) : [])
+  (_, ptr) <- alloch recType
+  ptrFunc <- instr $ GetElementPtr False ptr [ci64 0] []
+  store ptrFunc (cons (C.GlobalReference (typeToLLVMType t) (Name (topfunc ++ ".cls"))))
+  bitCast (T.ptr T.i8) ptr
 codegenExpr (CGet (VId x) (VId y) :-: ty) = do
   xv <- load $ local $ Name x
   yv <- load $ local $ Name y
   ret <- arrayIndex xv yv >>= load
   return (typeToLLVMType ty, ret)
+codegenExpr (CPut (VId x) (VId y) (VId z) :-: ty) = do
+  xv <- load $ local $ Name x
+  yv <- load $ local $ Name y
+  zv <- load $ local $ Name z
+  addr <- arrayIndex xv yv
+  _ <- store addr zv
+  return voidValue
 
 codegenTop :: [CFundef] -> ClosExp -> LLVM ()
 codegenTop fundefs expr = do
+  define (T.ptr T.i8) "malloc" [(T.i32, Name "size")] [] {- Functions with no blocks are treated as external functions -}
   mapM_ emitFundef fundefs
-  (retty, codegenState) <- liftEither $ runCodegen $ do
+  (retty, codegenState) <- liftEither $ runCodegen fundefs $ do
       entryBlock <- addBlock entryBlockName
       _ <- setBlock entryBlock
       (ty, val) <- codegenExpr expr
@@ -464,8 +500,12 @@ codegenTop fundefs expr = do
   define int32 "main" [] blks
 
 emitFundef :: CFundef -> LLVM () 
-emitFundef (CFundef (Id.VId idt, ty) arg formFV expr) = 
-  define int64 idt (map (\(Id.VId n,t) -> (int64, Name n)) arg) [] {- stub -}
+emitFundef (CFundef (Id.VId idt, ty) arg formFV expr) =
+  case ty of
+    TFun _ retty -> do
+      define (typeToLLVMType retty) (idt ++ ".cls") (map (\(Id.VId n,t) -> (typeToLLVMType t, Name n)) arg) [] {- stub -}
+      define (typeToLLVMType retty) (idt ++ ".dir") (map (\(Id.VId n,t) -> (typeToLLVMType t, Name n)) arg) [] {- stub -}
+    _ -> throwError "not a function type"
 
 emitAsm :: [CFundef] -> ClosExp -> IO String
 emitAsm fns expr = liftError $ do

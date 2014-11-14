@@ -59,7 +59,7 @@ repl str = do
       print al
       let clos@(cexp, cfuns) = trans al
       putStrLn "closure transformed:"
-      mapM print cfuns
+      mapM_ print cfuns
       print cexp
       asm <- emitAsm cfuns cexp
       putStrLn "asm code:"
