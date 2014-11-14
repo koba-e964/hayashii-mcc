@@ -266,12 +266,6 @@ voidValue = (AST.VoidType, cons $ C.Undef AST.VoidType)
 local ::  Name -> Operand
 local = LocalReference int64
 
-global ::  Name -> C.Constant
-global = C.GlobalReference int64
-
-externf :: Name -> Operand
-externf = ConstantOperand . C.GlobalReference double
-
 varRef :: VId -> Type.Type -> Codegen Operand
 varRef (VId x) ty = do
   isGlobal <- asks (Map.member x)
@@ -479,7 +473,7 @@ codegenExpr (CFloat f :-: _) = do
   return (float, cons $ C.Float $ F.Single f)
 codegenExpr (CArithBin op (VId x) (VId y) :-: _) = do
   let opInst = fromJust $ List.lookup op [(Syntax.Add, add), (Syntax.Sub, sub), (Syntax.Mul, mul), (Syntax.Div, Emit.div)]
-  ret <- join $ opInst <$> (load $ local $ Name x) <*> (load $ local $ Name y)
+  ret <- join $ opInst <$> (localVarRef (VId x) Type.TInt) <*> (localVarRef (VId y) Type.TInt)
   return (int32, ret)
 codegenExpr (CNeg (VId x) :-: _) = do
   ret <- join $ sub (ci32 0) <$> (load $ local $ Name x)
@@ -530,7 +524,7 @@ codegenExpr (CPut (VId x) (VId y) (VId z) :-: ty) = do
 codegenTop :: [CFundef] -> ClosExp -> LLVM ()
 codegenTop fundefs expr = do
   define (T.ptr T.i8) "malloc" [(T.i32, Name "size")] [] {- Functions with no blocks are treated as external functions -}
-  mapM_ emitFundef fundefs
+  mapM_ (emitFundef fundefs) fundefs
   (retty, codegenState) <- liftEither $ runCodegen fundefs $ do
       entryBlock <- addBlock entryBlockName
       _ <- setBlock entryBlock
@@ -542,12 +536,26 @@ codegenTop fundefs expr = do
   let blks = createBlocks codegenState
   define int32 "main" [] blks
 
-emitFundef :: CFundef -> LLVM () 
-emitFundef (CFundef (Id.VId idt, ty) arg formFV expr) =
+emitFundef :: [CFundef] -> CFundef -> LLVM () 
+emitFundef fundefs (CFundef (Id.VId idt, ty) arg formFV expr) =
   case ty of
     TFun _ retty -> do
-      define (typeToLLVMType retty) (idt) (map (\(Id.VId n,t) -> (typeToLLVMType t, Name n)) arg) [] {- stub -}
-      define (typeToLLVMType retty) (idt ++ ".dir") (map (\(Id.VId n,t) -> (typeToLLVMType t, Name n)) arg) [] {- stub -}
+      codegenState <- liftEither $ execCodegen fundefs $ do
+          entryBlock <- addBlock entryBlockName
+          _ <- setBlock entryBlock
+          forM_ arg $ \(VId n, ty) -> do
+            let ref = Name n
+            addInstr ref (Alloca (typeToLLVMType ty) Nothing 0 [])
+            store (localVarPtr (VId n) ty) (LocalReference (typeToLLVMType ty) (Name (n ++ ".ref")))
+          (ty, val) <- codegenExpr expr
+          _ <- case ty of
+            AST.VoidType -> retNone
+            _            -> ret val
+          return ()
+      let blks = createBlocks codegenState
+      define (typeToLLVMType retty) (idt) (map (\(Id.VId n,t) -> (typeToLLVMType t, Name (n ++ ".ref"))) arg) blks {- stub -}
+      when (null formFV) $
+        define (typeToLLVMType retty) (idt ++ ".dir") (map (\(Id.VId n,t) -> (typeToLLVMType t, Name (n ++ ".ref"))) arg) blks {- stub -}
     _ -> throwError "not a function type"
 
 emitAsm :: [CFundef] -> ClosExp -> IO String
