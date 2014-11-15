@@ -84,15 +84,24 @@ ssaTransFun (CFundef (VId lid, ty) args formFV expr) =
 
 
 ssaTransExpr :: ClosExp -> StateT CgenState M ()
+getOperand :: ClosExp -> StateT CgenState M Operand
 
-ssaTransExpr (expr :-: ty) = case expr of
-  CUnit -> addTerm (TRet (OpConst UnitConst))
-  CInt v -> addTerm (TRet (OpConst (IntConst (fromIntegral v))))
-  CFloat v -> addTerm (TRet (OpConst (FloatConst (fromRational (toRational v)))))
+ssaTransExpr exprty@(expr :-: ty) = do
+  op <- getOperand exprty
+  addTerm (TRet op)
+getOperand (expr :-: ty) = case expr of
+  CUnit -> return (OpConst UnitConst)
+  CInt v -> return  (OpConst (IntConst (fromIntegral v)))
+  CFloat v -> return (OpConst (FloatConst (fromRational (toRational v))))
   CNeg vid  -> do
     fresh <- freshVar
     addInst (Inst (Just fresh) (SNeg (OpVar (vid :-: TInt))))
-    addTerm (TRet (OpVar (fresh :-: TInt)))
+    return (OpVar (fresh :-: TInt))
+  CLet vid ty e1 e2 -> do
+    res <- getOperand e1
+    addInst (Inst (Just vid) (SId res))
+    getOperand e2
+  CVar vid -> return (OpVar (vid :-: ty))
 data CgenState = CgenState
   { blockIdx :: Int
   , current :: String
