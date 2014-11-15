@@ -11,6 +11,9 @@ import Syntax
 
 import Control.Applicative ((<$>))
 import Data.Int
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Data.Maybe
 
 import Control.Monad.Identity
 import Control.Monad.State
@@ -28,7 +31,7 @@ data SSAFundef = SSAFundef
 data Block = Block !BlockID ![Inst] !Term
   deriving (Eq, Show)
 
-type BlockID = Int
+type BlockID = String
 
 data Inst = Inst !(Maybe VId) !Op
   deriving (Eq)
@@ -77,7 +80,7 @@ ssaTrans defs (expr :-: ty) = do
 
 ssaTransFun :: CFundef -> M SSAFundef
 ssaTransFun (CFundef (VId lid, ty) args formFV expr) =
-  SSAFundef (LId lid :-: ty) (map (\(x,t) -> x :-: t) args) (map (\(x,t) -> x :-: t) formFV) <$> (fmap accBlocks $ execStateT (ssaTransExpr expr) emptyState)
+  SSAFundef (LId lid :-: ty) (map (\(x,t) -> x :-: t) args) (map (\(x,t) -> x :-: t) formFV) <$> (fmap getBlocks $ execStateT (ssaTransExpr expr) emptyState)
 
 
 ssaTransExpr :: ClosExp -> StateT CgenState M ()
@@ -92,27 +95,31 @@ ssaTransExpr (expr :-: ty) = case expr of
     addTerm (TRet (OpVar (fresh :-: TInt)))
 data CgenState = CgenState
   { blockIdx :: Int
-  , current :: [Inst]
-  , accBlocks :: [Block]
+  , current :: String
+  , accBlocks :: Map String Block
   } deriving (Show)
 
 emptyState :: CgenState
-emptyState = CgenState 0 [] []
+emptyState = CgenState 0 "entry" (Map.fromList [("entry", Block "entry" [] (TRet (OpConst UnitConst)))])
 
 addInst :: Inst -> StateT CgenState M ()
 addInst inst = do
-  bid <- gets blockIdx
-  is <- gets current
-  modify (\s -> s { current = is ++ [inst] })
+  nm <- gets current
+  Block blkId insts term <- gets (fromJust . Map.lookup nm . accBlocks)
+  modify (\s -> s { accBlocks = Map.insert nm (Block blkId (insts ++ [inst]) term) (accBlocks s) })
 
 
 addTerm :: Term -> StateT CgenState M ()
-addTerm t = do
-  bid <- gets blockIdx
-  insts <- gets current
-  modify (\s -> s { accBlocks = accBlocks s ++ [Block bid insts t], blockIdx = bid + 1, current = [] })
+addTerm term = do
+  nm <- gets current
+  Block blkId insts _ <- gets (fromJust . Map.lookup nm . accBlocks)
+  modify (\s -> s { accBlocks = Map.insert nm (Block blkId insts term) (accBlocks s) })
 
 freshVar :: StateT CgenState M VId
 freshVar = do
   Id str <- lift $ genId "SSA"
   return (VId str)
+
+getBlocks :: CgenState -> [Block]
+getBlocks st = map snd (Map.toList (accBlocks st))
+

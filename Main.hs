@@ -63,10 +63,13 @@ repl str = do
       mapM_ print cfuns
       print cexp
       let ssa = runCounter (ssaTrans cfuns cexp)
+      putStrLn "ssa:"
       print ssa
+      {- 
       asm <- emitAsm cfuns cexp
       putStrLn "asm code:"
       putStrLn asm
+      -}
     Left x -> error x
 
 processLib :: [String] -> IO (TypeEnv, [CVardef])
