@@ -29,7 +29,13 @@ data SSAFundef = SSAFundef
   } deriving (Eq, Show)
 
 data Block = Block !BlockID ![Inst] !Term
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance Show Block where
+  show (Block bid insts term) = 
+    bid ++ ":\n" ++
+    concatMap (\x -> show x ++ "\n") insts ++
+    show term ++ "\n"
 
 type BlockID = String
 
@@ -43,8 +49,8 @@ instance Show Inst where
 
 data Op = 
   SId !Operand
-  | SArithBin !ArithBinOp !Operand
-  | SFloatBin !FloatBinOp !Operand
+  | SArithBin !ArithBinOp !Operand !Operand
+  | SFloatBin !FloatBinOp !Operand !Operand
   | SNeg !Operand
   | SFNeg !Operand
   | SCall !(Typed LId) ![Typed VId]
@@ -102,6 +108,10 @@ getOperand (expr :-: ty) = case expr of
     addInst (Inst (Just vid) (SId res))
     getOperand e2
   CVar vid -> return (OpVar (vid :-: ty))
+  CArithBin op x y -> do
+    fresh <- freshVar
+    addInst $ Inst (Just fresh) $ SArithBin op (OpVar (x :-: TInt)) (OpVar (y :-: TInt))
+    return (OpVar (fresh :-: TInt))
 data CgenState = CgenState
   { blockIdx :: Int
   , current :: String
