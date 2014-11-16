@@ -1,5 +1,6 @@
 module Main where
 
+import Control.Monad.Reader (runReader)
 import qualified Data.Map as Map
 import System.Console.GetOpt
 import System.Environment
@@ -13,7 +14,7 @@ import KNormal (kNormal)
 import Alpha (alpha)
 import Emit
 import SSA
-import Closure (CVardef, trans)
+import Closure (CVardef, CFundef(..), trans)
 
 
 data Config = Config { threshold :: !Int, limit :: !Int, glib :: ![String] }
@@ -62,7 +63,8 @@ repl str = do
       putStrLn "closure transformed:"
       mapM_ print cfuns
       print cexp
-      let ssa = runCounter (ssaTrans cfuns cexp)
+      let ssa = runReader (runCounterT (ssaTrans cfuns cexp))
+            (Map.fromList (map (\(CFundef {Closure.name = (VId n,ty)}) -> (Id n, ty)) cfuns))
       putStrLn "ssa:"
       print ssa
       {- 

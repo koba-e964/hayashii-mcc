@@ -5,11 +5,13 @@ module SSA where
 
 import Closure
 import Type
+import Typing (TypeEnv)
 import Id
 import Syntax
 
 
 import Control.Applicative ((<$>))
+import Control.Monad.Reader
 import Data.Int
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -18,7 +20,7 @@ import Data.Maybe
 import Control.Monad.Identity
 import Control.Monad.State
 
-type M = CounterT Identity
+type M = CounterT (Reader TypeEnv)
 
 
 data SSAFundef = SSAFundef
@@ -103,15 +105,31 @@ getOperand (expr :-: ty) = case expr of
     fresh <- freshVar
     addInst (Inst (Just fresh) (SNeg (OpVar (vid :-: TInt))))
     return (OpVar (fresh :-: TInt))
-  CLet vid ty e1 e2 -> do
+  CFNeg vid  -> do
+    fresh <- freshVar
+    addInst (Inst (Just fresh) (SFNeg (OpVar (vid :-: TFloat))))
+    return (OpVar (fresh :-: TFloat))
+  CLet vid@(VId i) ty e1 e2 -> do
     res <- getOperand e1
     addInst (Inst (Just vid) (SId res))
-    getOperand e2
+    local (Map.insert (Id i) ty) (getOperand e2) {- environment does not hold temporaries created by SSA. -}
   CVar vid -> return (OpVar (vid :-: ty))
   CArithBin op x y -> do
     fresh <- freshVar
     addInst $ Inst (Just fresh) $ SArithBin op (OpVar (x :-: TInt)) (OpVar (y :-: TInt))
     return (OpVar (fresh :-: TInt))
+  CFloatBin op x y -> do
+    fresh <- freshVar
+    addInst $ Inst (Just fresh) $ SFloatBin op (OpVar (x :-: TFloat)) (OpVar (y :-: TFloat))
+    return (OpVar (fresh :-: TFloat))
+  CAppDir fun@(LId funname) args -> do
+    fresh <- freshVar
+    funType@(TFun _ retType) <- asks (fromJust . Map.lookup (Id funname))
+    argTypes <- forM args $ \(VId x) -> do
+      ty <- asks (fromJust . Map.lookup (Id x))
+      return (VId x :-: ty)
+    addInst $ Inst (Just fresh) $ SCall (fun :-: funType) argTypes
+    return (OpVar (fresh :-: retType))
 data CgenState = CgenState
   { blockIdx :: Int
   , current :: String
