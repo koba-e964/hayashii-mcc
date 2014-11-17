@@ -122,13 +122,26 @@ getOperand (expr :-: ty) = case expr of
     fresh <- freshVar
     addInst $ Inst (Just fresh) $ SFloatBin op (OpVar (x :-: TFloat)) (OpVar (y :-: TFloat))
     return (OpVar (fresh :-: TFloat))
+  CMakeCls clsVid@(VId clsName) ty clos expr -> do
+    {- TODO No initialization is performed. -}
+    local (Map.insert (Id clsName) ty) (getOperand expr) {- environment does not hold temporaries created by SSA. -}    
+  CAppCls fun@(VId funname) args -> do
+    fresh <- freshVar
+    funType@(TFun argType retType) <- asks (fromJust . Map.lookup (Id funname))
+    let clsType = TArray TUnit
+    let clsId = fun :-: clsType
+    argsId <- forM args $ \(VId x) -> do
+      ty <- asks (fromJust . Map.lookup (Id x))
+      return (VId x :-: ty)
+    addInst $ Inst (Just fresh) $ SCall (LId funname :-: TFun (clsType : argType) retType)  (clsId : argsId)
+    return (OpVar (fresh :-: retType))
   CAppDir fun@(LId funname) args -> do
     fresh <- freshVar
     funType@(TFun _ retType) <- asks (fromJust . Map.lookup (Id funname))
-    argTypes <- forM args $ \(VId x) -> do
+    argsId <- forM args $ \(VId x) -> do
       ty <- asks (fromJust . Map.lookup (Id x))
       return (VId x :-: ty)
-    addInst $ Inst (Just fresh) $ SCall (fun :-: funType) argTypes
+    addInst $ Inst (Just fresh) $ SCall (fun :-: funType) argsId
     return (OpVar (fresh :-: retType))
 data CgenState = CgenState
   { blockIdx :: Int
