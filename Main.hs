@@ -40,7 +40,9 @@ usage = "MinCaml on Haskell\n"
 
 
 extenv :: TypeEnv
-extenv = Map.fromList [(Id "print_int", TFun [TInt] TUnit)]
+extenv = Map.fromList
+  [(Id "print_int", TFun [TInt] TUnit)
+  ]
 
 repl :: String -> IO ()
 repl str = do
