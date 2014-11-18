@@ -14,6 +14,7 @@ import KNormal (kNormal)
 import Alpha (alpha)
 import Emit
 import SSA
+import SSAOpt
 import Closure (CVardef, CFundef(..), trans)
 
 
@@ -69,6 +70,9 @@ repl str = do
             (Map.fromList (map (\(CFundef {Closure.name = (VId n,ty)}) -> (Id n, ty)) cfuns))
       putStrLn "ssa:"
       print ssa
+      putStrLn "**** optimized SSA ****"
+      let optSSA = map constProp ssa
+      print optSSA
       {- 
       asm <- emitAsm cfuns cexp
       putStrLn "asm code:"
