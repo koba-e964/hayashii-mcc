@@ -38,10 +38,18 @@ propInst (Inst dest op) = do
     SId o -> return $ SId $ prop env o
     SArithBin operator x y ->
       return $ SArithBin operator (prop env x) (prop env y)
-    e -> return $ e
+    SNeg x ->
+      return $ SNeg (prop env x)
+    SFNeg x ->
+      return $ SFNeg (prop env x)
+    SFloatBin operator x y ->
+      return $ SFloatBin operator (prop env x) (prop env y)
+    SCall lid operands ->
+      return $ SCall lid (map (prop env) operands)
   return $ Inst dest result
 
 
+{- @prop env op@ returns op itself or constant assigned to @op@. -}
 prop :: ConstEnv -> Operand -> Operand
 prop env op = case op of
   OpVar (vid :-: _) | Map.member vid env -> OpConst (env Map.! vid)
