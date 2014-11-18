@@ -13,6 +13,7 @@ import Syntax
 import Control.Applicative ((<$>))
 import Control.Monad.Reader
 import Data.Int
+import qualified Data.List as List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
@@ -28,7 +29,13 @@ data SSAFundef = SSAFundef
   , args :: ![Typed VId]
   , formalFV :: ![Typed VId]
   , blocks :: ![Block]
-  } deriving (Eq, Show)
+  } deriving (Eq)
+
+instance Show SSAFundef where
+  show (SSAFundef (LId n :-: funTy) args formFV blks) = 
+    "def @" ++ n ++ "(" ++ List.intercalate ", " (map (\(_ :-: ty) -> show ty) args) ++ ") : " ++ show retTy ++ "\n" ++ show blks
+   where
+    TFun _ retTy = funTy
 
 data Block = Block !BlockID ![Inst] !Term
   deriving (Eq)
@@ -36,8 +43,8 @@ data Block = Block !BlockID ![Inst] !Term
 instance Show Block where
   show (Block bid insts term) = 
     bid ++ ":\n" ++
-    concatMap (\x -> show x ++ "\n") insts ++
-    show term ++ "\n"
+    concatMap (\x -> "  " ++ show x ++ "\n") insts ++
+    "  " ++ show term ++ "\n"
 
 type BlockID = String
 
