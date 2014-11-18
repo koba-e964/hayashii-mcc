@@ -161,6 +161,10 @@ getOperand (expr :-: ty) = case expr of
       let (argid, argty) = zip elems elemTy !! i
       arrayPut (OpVar (fresh :-: retType)) (ci32 (4 * i)) (OpVar (argid :-: argty))
     return (OpVar (fresh :-: retType))
+  CGet x y -> do
+    xty <- lookupTypeInfo x
+    yty <- lookupTypeInfo y
+    arrayGet (OpVar (x :-: xty)) (OpVar (y :-: yty))
   CPut x y z -> do
     xty <- lookupTypeInfo x
     yty <- lookupTypeInfo y
@@ -181,7 +185,13 @@ arrayPut :: MonadState CgenState m => Operand -> Operand -> Operand -> m ()
 arrayPut aryOp idxOp elemOp =
   addInst $ Inst Nothing $ SCall (LId "array_put" :-: (TFun [getType aryOp, TInt, getType elemOp] TUnit))
     [aryOp, idxOp, elemOp]
-
+arrayGet :: Operand -> Operand -> StateT CgenState M Operand
+arrayGet aryOp idxOp = do
+  let aryTy@(TArray elemTy) = getType aryOp
+  fresh <- freshVar　elemTy
+  addInst $ Inst (Just fresh) $ SCall (LId "array_get" :-: (TFun [aryTy, TInt] elemTy))
+    [aryOp, idxOp]
+  return (OpVar (fresh :-: elemTy))
 
 emptyState :: CgenState
 emptyState = CgenState 0 "entry" (Map.fromList [("entry", Block "entry" [] (TRet (OpConst UnitConst)))]) Map.empty
