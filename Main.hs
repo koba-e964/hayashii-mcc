@@ -15,6 +15,7 @@ import Alpha (alpha)
 import Emit
 import SSA
 import SSAOpt
+import SSAElim
 import Closure (CVardef, CFundef(..), trans)
 
 
@@ -72,7 +73,8 @@ repl str = do
       print ssa
       putStrLn "**** optimized SSA ****"
       let optSSA = map constProp ssa
-      print optSSA
+      let elimSSA = map elimDest optSSA
+      print elimSSA
       {- 
       asm <- emitAsm cfuns cexp
       putStrLn "asm code:"
