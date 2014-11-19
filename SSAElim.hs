@@ -37,3 +37,26 @@ removeDest app (Block blkId insts term) = Block blkId (map f insts) term
   where
     f (Inst (Just vid) op) | notElem vid app = Inst Nothing op
     f e = e
+
+elimUselessInstructions :: SSAFundef -> SSAFundef
+elimUselessInstructions fundef@(SSAFundef {blocks = blks} ) =
+  fundef { blocks = map removeUselessInstructions blks }
+
+removeUselessInstructions :: Block -> Block
+removeUselessInstructions (Block blkId insts term) = Block blkId (filter f insts) term
+  where
+    f (Inst Nothing op) = case op of
+      SId {} -> False
+      SNeg {} -> False
+      SFNeg {} -> False
+      SArithBin {} -> False
+      SFloatBin {} -> False
+      _ -> True
+    f _ = True
+
+{- perform dead code elimination -}
+eliminate :: [SSAFundef] -> [SSAFundef]
+eliminate = map f where
+   f e = let e' = elimUselessInstructions (elimDest e) in
+    if e == e' then e else f e'
+

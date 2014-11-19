@@ -73,7 +73,7 @@ repl str = do
       print ssa
       putStrLn "**** optimized SSA ****"
       let optSSA = map constProp ssa
-      let elimSSA = map elimDest optSSA
+      let elimSSA = eliminate optSSA
       print elimSSA
       {- 
       asm <- emitAsm cfuns cexp
