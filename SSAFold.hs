@@ -20,7 +20,12 @@ cfFundef fundef@(SSAFundef { blocks = blk}) =
           Sub -> x - y
           Mul -> x * y
           Div -> x `div` y
-
       SFNeg (OpConst (FloatConst x)) -> SId (OpConst (FloatConst (-x)))
+      SFloatBin operator (OpConst (FloatConst x)) (OpConst (FloatConst y)) ->
+        SId $ OpConst $ FloatConst $ case operator of
+          FAdd -> x + y
+          FSub -> x - y
+          FMul -> x * y
+          FDiv -> x / y
       _ -> op
 
