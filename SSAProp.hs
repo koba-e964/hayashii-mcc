@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, FlexibleContexts, TypeOperators #-}
-module SSAOpt where
+module SSAProp where
 
 import Id
 import SSA

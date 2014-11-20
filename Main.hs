@@ -14,7 +14,7 @@ import KNormal (kNormal)
 import Alpha (alpha)
 import Emit
 import SSA
-import SSAOpt
+import SSAProp
 import SSAElim
 import Closure (CVardef, CFundef(..), trans)
 
