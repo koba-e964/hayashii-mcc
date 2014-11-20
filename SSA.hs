@@ -150,7 +150,7 @@ getOperand (expr :-: ty) = case expr of
          let TArray elemTy = ty in
            return $ TFun [TInt,elemTy] ty
       else
-        asks (fromJust . Map.lookup (Id funname))
+        asks (fromMaybe (error $ "type of " ++ show fun ++ " is not found") . Map.lookup (Id funname))
     fresh <- freshVar retType
     argsId <- forM args $ \vx -> do
       ty <- lookupTypeInfo vx

@@ -57,7 +57,7 @@ ssaOfString str =
   let al = alpha kn in
   let clos@(cexp, cfuns) = trans al in
   let ssa = runReader (runCounterT (ssaTrans cfuns cexp))
-       (Map.fromList (map (\(CFundef {Closure.name = (VId n,ty)}) -> (Id n, ty)) cfuns)) in
+       (Map.fromList (map (\(CFundef {Closure.name = (VId n,ty)}) -> (Id n, ty)) cfuns) `Map.union` extenv) in
   ssa
 
 checkSSA :: String -> String -> TF.Test

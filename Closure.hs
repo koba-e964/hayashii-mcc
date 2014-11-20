@@ -129,7 +129,7 @@ transSub env known (e :-: t) = fmap (:-: t) $ case e of
   KGet (Id x) (Id y) -> return $ CGet (VId x) (VId y)
   KPut (Id x) (Id y) (Id z) -> return $ CPut (VId x) (VId y) (VId z)
   KExtArray (Id x) -> return $ CExtArray (LId x)
-  KExtFunApp (Id x) ys -> return $ CAppDir (LId ("min_caml_" ++ x)) (map idToVId ys)
+  KExtFunApp (Id x) ys -> return $ CAppDir (LId x) (map idToVId ys)
 
 trans :: KNormal -> (ClosExp, [CFundef])
 trans expr = runState (transSub Map.empty Set.empty expr) []

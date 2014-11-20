@@ -69,7 +69,7 @@ repl str = do
       mapM_ print cfuns
       print cexp
       let ssa = runReader (runCounterT (ssaTrans cfuns cexp))
-            (Map.fromList (map (\(CFundef {Closure.name = (VId n,ty)}) -> (Id n, ty)) cfuns))
+            (Map.fromList (map (\(CFundef {Closure.name = (VId n,ty)}) -> (Id n, ty)) cfuns) `Map.union` extenv)
       putStrLn "ssa:"
       print ssa
       putStrLn "**** optimized SSA ****"
