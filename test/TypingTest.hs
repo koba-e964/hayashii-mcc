@@ -67,7 +67,7 @@ tests = [testRec, testFloat]
 
 testRec = TF.testGroup "typing_rec"
   [ checkValidType "typing_rec1" "let rec fib x = if x <= 0 then x else fib (x-1) + fib (x-2) in print_int (fib 5)"
-  , checkInvalidType "typing_rec2" "let rec fib x = if x <= 0 then x else fib (x-1) + fib (x-2) in fib 5" -- int /= unit
+  , checkValidType "typing_rec2" "let rec fib x = if x <= 0 then x else fib (x-1) + fib (x-2) in fib 5"
   , checkInvalidType "typing_rec3" "let rec f xs = f (xs, 1) in print_int 1" -- occur check
   , checkInvalidType "typing_rec4" "let rec append x = append (x, x) in print_int 30"
   , checkValidType "typing_rec5" "let rec f x = f x in print_int 30"
