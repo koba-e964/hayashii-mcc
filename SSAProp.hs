@@ -24,7 +24,8 @@ constPropBlock blk = evalState (cpb blk) Map.empty
 cpb :: (MonadState ConstEnv m) => Block -> m Block
 cpb (Block blkId insts term) = do
   newInsts <- mapM propInst insts
-  return $ Block blkId newInsts term
+  newTerm <- propTerm term
+  return $ Block blkId newInsts newTerm
 
 propInst :: (MonadState ConstEnv m) => Inst -> m Inst
 propInst (Inst dest op) = do
@@ -48,6 +49,11 @@ propInst (Inst dest op) = do
       return $ SCall lid (map (prop env) operands)
   return $ Inst dest result
 
+propTerm :: (MonadState ConstEnv m) => Term -> m Term
+propTerm (TRet x) = do
+  env <- get
+  return $ TRet (prop env x)
+propTerm e = return e
 
 {- @prop env op@ returns op itself or constant assigned to @op@. -}
 prop :: ConstEnv -> Operand -> Operand
