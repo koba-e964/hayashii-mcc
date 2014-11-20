@@ -11,11 +11,11 @@ import qualified Data.Map as Map
 import Data.Maybe
 import Data.Typeable
 
-type ConstEnv = Map VId Const
+type ConstEnv = Map VId Operand
 
 
-constProp :: SSAFundef -> SSAFundef
-constProp (SSAFundef nty args formFV blks) = 
+propFundef :: SSAFundef -> SSAFundef
+propFundef (SSAFundef nty args formFV blks) = 
   (SSAFundef nty args formFV (map constPropBlock blks))
 
 constPropBlock :: Block -> Block
@@ -30,11 +30,11 @@ propInst :: (MonadState ConstEnv m) => Inst -> m Inst
 propInst (Inst dest op) = do
   env <- get
   result <- case op of
-    SId (OpConst c) -> do
+    SId c -> do
       case dest of
         Nothing -> return ()
         Just dest' -> modify (Map.insert dest' c)
-      return $ SId (OpConst c)
+      return $ SId c
     SId o -> return $ SId $ prop env o
     SArithBin operator x y ->
       return $ SArithBin operator (prop env x) (prop env y)
@@ -52,6 +52,13 @@ propInst (Inst dest op) = do
 {- @prop env op@ returns op itself or constant assigned to @op@. -}
 prop :: ConstEnv -> Operand -> Operand
 prop env op = case op of
-  OpVar (vid :-: _) | Map.member vid env -> OpConst (env Map.! vid)
+  OpVar (vid :-: _) | Map.member vid env -> env Map.! vid
   _ -> op
+
+{- Performs constant propagation and copy propagation. This continues until no changes happen. -}
+propagate :: [SSAFundef] -> [SSAFundef]
+propagate = map f
+  where
+   f e = let e' = propFundef e in
+    if e == e' then e else f e'
 

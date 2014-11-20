@@ -72,9 +72,8 @@ repl str = do
       putStrLn "ssa:"
       print ssa
       putStrLn "**** optimized SSA ****"
-      let optSSA = map constProp ssa
-      let elimSSA = eliminate optSSA
-      print elimSSA
+      let optSSA = iterate (eliminate . propagate) ssa !! 10
+      print optSSA
       {- 
       asm <- emitAsm cfuns cexp
       putStrLn "asm code:"
