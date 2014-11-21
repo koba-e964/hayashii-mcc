@@ -60,6 +60,7 @@ data Op =
   SId !Operand
   | SArithBin !ArithBinOp !Operand !Operand
   | SFloatBin !FloatBinOp !Operand !Operand
+  | SCmpBin !CmpOp !Operand !Operand
   | SNeg !Operand
   | SFNeg !Operand
   | SCall !(Typed LId) ![Operand]
@@ -117,6 +118,25 @@ getOperand (expr :-: ty) = case expr of
     fresh <- freshVar TFloat
     addInst (Inst (Just fresh) (SFNeg (OpVar (vid :-: TFloat))))
     return (OpVar (fresh :-: TFloat))
+  CIf operator x y e1 e2 -> do
+    ty <- lookupTypeInfo x
+    fresh <- freshVar TInt
+    addInst $ Inst (Just fresh) $ SCmpBin operator (OpVar (x :-: ty)) (OpVar (y :-: ty))
+    thenBlk <- newBlock "then"
+    elseBlk <- newBlock "else"
+    contBlk <- newBlock "cont"
+    addTerm $ TBr (OpVar (fresh :-: TInt)) thenBlk elseBlk
+    setBlock thenBlk
+    oth <- getOperand e1
+    addTerm $ TBr (ci32 1) contBlk contBlk
+    setBlock elseBlk
+    oel <- getOperand e2
+    addTerm $ TBr (ci32 1) contBlk contBlk
+    setBlock contBlk
+    let retTy = getType oth
+    retFresh <- freshVar retTy
+    addInst $ Inst (Just retFresh) $ SPhi [("then", oth), ("else", oel)]
+    return (OpVar (retFresh :-: retTy))
   CLet vid@(VId i) ty e1 e2 -> do
     res <- getOperand e1
     addInst (Inst (Just vid) (SId res))
@@ -238,8 +258,22 @@ addTypeInfo vid ty = modify (\s ->  s { typeEnv = Map.insert vid ty $ typeEnv s 
 lookupTypeInfo :: VId -> StateT CgenState M Type
 lookupTypeInfo vid = gets (fromMaybe (error $ "type of " ++ show vid ++ " is not found") . Map.lookup vid . typeEnv)
 
+newBlock :: String -> StateT CgenState M BlockID
+newBlock str = do
+  idx <- gets blockIdx
+  let newBlockName = str ++ "." ++ show idx
+  modify $ \s -> s { blockIdx = idx + 1　}
+  return newBlockName
+
+setBlock :: BlockID -> StateT CgenState M ()
+setBlock blkID = do
+  let newBlock = Block blkID [] (TRet (OpConst UnitConst))
+  modify $ \s -> s { current = blkID, accBlocks = Map.insert blkID newBlock (accBlocks s) }
+
 getBlocks :: CgenState -> [Block]
 getBlocks st = map snd (Map.toList (accBlocks st))
+
+
 
 getType :: Operand -> Type
 getType (OpVar (_ :-: ty)) = ty
