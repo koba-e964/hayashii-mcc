@@ -63,6 +63,7 @@ data Op =
   | SNeg !Operand
   | SFNeg !Operand
   | SCall !(Typed LId) ![Operand]
+  | SPhi ![(BlockID, Operand)]
   deriving (Eq, Show)
 data Term =
   TRet !Operand
@@ -168,6 +169,12 @@ getOperand (expr :-: ty) = case expr of
       let (argid, argty) = zip elems elemTy !! i
       arrayPut (OpVar (fresh :-: retType)) (ci32 (4 * i)) (OpVar (argid :-: argty))
     return (OpVar (fresh :-: retType))
+  CLetTuple elems tuple expr -> do
+    let size = 4 * length elems {- TODO This code assumes that sizeof int, float, ptr are all 4. -}
+    forM_ [0 .. length elems - 1] $ \i -> do
+      let (argid, argTy) = elems !! i
+      addInst $ Inst (Just argid) $ SCall (LId "array_get" :-: (TFun [TArray TUnit, TInt] argTy)) [OpVar (tuple :-: TArray TUnit), ci32 (4 * i)]
+    getOperand expr
   CGet x y -> do
     xty <- lookupTypeInfo x
     yty <- lookupTypeInfo y
@@ -178,6 +185,8 @@ getOperand (expr :-: ty) = case expr of
     zty <- lookupTypeInfo z
     arrayPut (OpVar (x :-: xty)) (OpVar (y :-: yty)) (OpVar (z :-: zty))
     return (OpConst UnitConst)
+  CExtArray (LId x) -> 
+    error "Undefined instruction: extarray"
 data CgenState = CgenState
   { blockIdx :: Int
   , current :: String
