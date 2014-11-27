@@ -20,8 +20,10 @@ fvOp op = case op of
   SNeg x -> fvOperand x
   SFNeg x -> fvOperand x
   SArithBin _ x y -> fvOperand x ++ fvOperand y
+  SCmpBin _ x y -> fvOperand x ++ fvOperand y
   SFloatBin _ x y -> fvOperand x ++ fvOperand y
   SCall _ args -> concatMap fvOperand args
+  SPhi ls -> concatMap (fvOperand . snd) ls
 
 fvTerm :: Term -> [VId]
 fvTerm (TRet op) = fvOperand op

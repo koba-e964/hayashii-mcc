@@ -97,7 +97,9 @@ ssaTrans defs (expr :-: ty) = do
 
 ssaTransFun :: CFundef -> M SSAFundef
 ssaTransFun (CFundef (VId lid, ty) args formFV expr) =
-  SSAFundef (LId lid :-: ty) (map (\(x,t) -> x :-: t) args) (map (\(x,t) -> x :-: t) formFV) <$> (fmap getBlocks $ execStateT (ssaTransExpr expr) emptyState)
+  let typedArg = map (\(x,t) -> x :-: t) args in
+  let typedFV  = map (\(x,t) -> x :-: t) formFV in
+  SSAFundef (LId lid :-: ty) typedArg typedFV <$> (fmap getBlocks $ execStateT (ssaTransExpr expr) (emptyState (typedArg ++ typedFV)))
 
 
 ssaTransExpr :: ClosExp -> StateT CgenState M ()
@@ -229,8 +231,9 @@ arrayGet aryOp idxOp = do
     [aryOp, idxOp]
   return (OpVar (fresh :-: elemTy))
 
-emptyState :: CgenState
-emptyState = CgenState 0 "entry" (Map.fromList [("entry", Block "entry" [] (TRet (OpConst UnitConst)))]) Map.empty
+emptyState :: [Typed VId] -> CgenState
+emptyState vids = CgenState 0 "entry" (Map.fromList [("entry", Block "entry" [] (TRet (OpConst UnitConst)))])
+  (Map.fromList $ map (\(x :-: t) -> (x, t)) vids)
 
 addInst :: MonadState CgenState m => Inst -> m ()
 addInst inst = do

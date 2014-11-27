@@ -36,9 +36,10 @@ propInst (Inst dest op) = do
         Nothing -> return ()
         Just dest' -> modify (Map.insert dest' c)
       return $ SId c
-    SId o -> return $ SId $ prop env o
     SArithBin operator x y ->
       return $ SArithBin operator (prop env x) (prop env y)
+    SCmpBin operator x y ->
+      return $ SCmpBin operator (prop env x) (prop env y)
     SNeg x ->
       return $ SNeg (prop env x)
     SFNeg x ->
@@ -47,6 +48,8 @@ propInst (Inst dest op) = do
       return $ SFloatBin operator (prop env x) (prop env y)
     SCall lid operands ->
       return $ SCall lid (map (prop env) operands)
+    SPhi ls ->
+      return $ SPhi $ map (\(blkId, x) -> (blkId, prop env x)) ls
   return $ Inst dest result
 
 propTerm :: (MonadState ConstEnv m) => Term -> m Term
