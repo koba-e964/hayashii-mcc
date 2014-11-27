@@ -53,6 +53,8 @@ removeUselessInstructions (Block blkId insts term) = Block blkId (filter f insts
       SFNeg {} -> False
       SArithBin {} -> False
       SFloatBin {} -> False
+      SCmpBin {} -> False
+      SPhi {} -> False
       _ -> True
     f _ = True
 

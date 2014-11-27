@@ -8,8 +8,6 @@ import Control.Monad
 import Control.Monad.State
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Maybe
-import Data.Typeable
 
 type ConstEnv = Map VId Operand
 
@@ -56,7 +54,9 @@ propTerm :: (MonadState ConstEnv m) => Term -> m Term
 propTerm (TRet x) = do
   env <- get
   return $ TRet (prop env x)
-propTerm e = return e
+propTerm (TBr x blk1 blk2) = do
+  env <- get
+  return $ TBr (prop env x) blk1 blk2
 
 {- @prop env op@ returns op itself or constant assigned to @op@. -}
 prop :: ConstEnv -> Operand -> Operand

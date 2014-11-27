@@ -27,5 +27,15 @@ cfFundef fundef@(SSAFundef { blocks = blk}) =
           FSub -> x - y
           FMul -> x * y
           FDiv -> x / y
+      SCmpBin operator (OpConst (IntConst x)) (OpConst (IntConst y)) ->
+        SId $ OpConst $ IntConst $ case operator of
+          Eq -> if x == y then 1 else 0
+          LE -> if x <= y then 1 else 0
+      SCmpBin operator (OpConst (FloatConst x)) (OpConst (FloatConst y)) ->
+        SId $ OpConst $ IntConst $ case operator of
+          Eq -> if x == y then 1 else 0
+          LE -> if x <= y then 1 else 0
+      SPhi (x:rest) | all (\(_, y) -> y == snd x) rest ->
+        SId $ snd x
       _ -> op
 
