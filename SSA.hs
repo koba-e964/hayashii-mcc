@@ -130,14 +130,16 @@ getOperand (expr :-: ty) = case expr of
     addTerm $ TBr (OpVar (fresh :-: TInt)) thenBlk elseBlk
     setBlock thenBlk
     oth <- getOperand e1
+    thenEnd <- getBlock
     addTerm $ TBr (ci32 1) contBlk contBlk
     setBlock elseBlk
     oel <- getOperand e2
+    elseEnd <- getBlock
     addTerm $ TBr (ci32 1) contBlk contBlk
     setBlock contBlk
     let retTy = getType oth
     retFresh <- freshVar retTy
-    addInst $ Inst (Just retFresh) $ SPhi [("then", oth), ("else", oel)]
+    addInst $ Inst (Just retFresh) $ SPhi [(thenEnd, oth), (elseEnd, oel)]
     return (OpVar (retFresh :-: retTy))
   CLet vid@(VId i) ty e1 e2 -> do
     res <- getOperand e1
@@ -265,13 +267,17 @@ newBlock :: String -> StateT CgenState M BlockID
 newBlock str = do
   idx <- gets blockIdx
   let newBlockName = str ++ "." ++ show idx
-  modify $ \s -> s { blockIdx = idx + 1　}
+  let newBlk = Block newBlockName [] (TRet (OpConst UnitConst))
+  modify $ \s -> s { blockIdx = idx + 1, accBlocks = Map.insert newBlockName newBlk (accBlocks s)　}
   return newBlockName
 
 setBlock :: BlockID -> StateT CgenState M ()
-setBlock blkID = do
-  let newBlock = Block blkID [] (TRet (OpConst UnitConst))
-  modify $ \s -> s { current = blkID, accBlocks = Map.insert blkID newBlock (accBlocks s) }
+setBlock blkID =
+  modify $ \s -> s { current = blkID }
+
+getBlock :: StateT CgenState M BlockID
+getBlock = gets current
+
 
 getBlocks :: CgenState -> [Block]
 getBlocks st = map snd (Map.toList (accBlocks st))
