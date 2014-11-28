@@ -37,6 +37,9 @@ instance Show SSAFundef where
    where
     TFun _ retTy = funTy
 
+entryBlockName :: BlockID
+entryBlockName = "entry"
+
 data Block = Block !BlockID ![Inst] !Term
   deriving (Eq)
 
@@ -235,7 +238,7 @@ arrayGet aryOp idxOp = do
   return (OpVar (fresh :-: elemTy))
 
 emptyState :: [Typed VId] -> CgenState
-emptyState vids = CgenState 0 "entry" (Map.fromList [("entry", Block "entry" [] (TRet (OpConst UnitConst)))])
+emptyState vids = CgenState 0 entryBlockName (Map.fromList [(entryBlockName, Block entryBlockName [] (TRet (OpConst UnitConst)))])
   (Map.fromList $ map (\(x :-: t) -> (x, t)) vids)
 
 addInst :: MonadState CgenState m => Inst -> m ()

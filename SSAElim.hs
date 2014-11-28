@@ -4,6 +4,8 @@ import SSA
 import Id
 import Type
 
+import qualified Data.Set as Set
+
 {- for every instruction x := op, if @x@ does not appear in right-side, assignment to @x@ is eliminated. -}
 elimDest :: SSAFundef -> SSAFundef
 elimDest fundef@(SSAFundef {blocks = blks} ) =
@@ -59,9 +61,22 @@ removeUselessInstructions (Block blkId insts term) = Block blkId (filter f insts
       _ -> True
     f _ = True
 
+elimUnreachableBlocks :: SSAFundef -> SSAFundef
+elimUnreachableBlocks fundef@(SSAFundef {blocks = blks} ) =
+  fundef { blocks = f } where
+    cfgDest (Block _ _ term) = case term of
+      TRet {} -> []
+      TBr _ blk1 blk2 -> [blk1, blk2]
+      TJmp b -> [b]
+    reachable = Set.fromList $ entryBlockName : concatMap cfgDest blks {- TODO Super-tenuki. Ideally, this should be checked by reachablity analysis from entry. -}
+    f = filter (\(Block blkID _ _) -> Set.member blkID reachable) blks
+
+
+
+
 {- perform dead code elimination -}
 eliminate :: [SSAFundef] -> [SSAFundef]
 eliminate = map f where
-   f e = let e' = elimUselessInstructions (elimDest e) in
+   f e = let e' = elimUselessInstructions (elimUnreachableBlocks (elimDest e)) in
     if e == e' then e else f e'
 
