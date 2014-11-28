@@ -57,6 +57,7 @@ propTerm (TRet x) = do
 propTerm (TBr x blk1 blk2) = do
   env <- get
   return $ TBr (prop env x) blk1 blk2
+propTerm t@(TJmp {}) = return $ t
 
 {- @prop env op@ returns op itself or constant assigned to @op@. -}
 prop :: ConstEnv -> Operand -> Operand

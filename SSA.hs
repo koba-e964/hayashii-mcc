@@ -69,6 +69,7 @@ data Op =
 data Term =
   TRet !Operand
   | TBr !Operand !BlockID !BlockID
+  | TJmp !BlockID
   deriving (Eq, Show)
 data Operand = OpVar !(Typed VId) | OpConst !Const
   deriving (Eq)
@@ -131,11 +132,11 @@ getOperand (expr :-: ty) = case expr of
     setBlock thenBlk
     oth <- getOperand e1
     thenEnd <- getBlock
-    addTerm $ TBr (ci32 1) contBlk contBlk
+    addTerm $ TJmp contBlk
     setBlock elseBlk
     oel <- getOperand e2
     elseEnd <- getBlock
-    addTerm $ TBr (ci32 1) contBlk contBlk
+    addTerm $ TJmp contBlk
     setBlock contBlk
     let retTy = getType oth
     retFresh <- freshVar retTy

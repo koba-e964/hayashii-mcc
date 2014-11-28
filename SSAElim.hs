@@ -28,6 +28,7 @@ fvOp op = case op of
 fvTerm :: Term -> [VId]
 fvTerm (TRet op) = fvOperand op
 fvTerm (TBr op _ _) = fvOperand op
+fvTerm (TJmp {}) = []
 
 fvOperand :: Operand -> [VId]
 fvOperand (OpVar (vid :-: _)) = [vid]
