@@ -17,6 +17,7 @@ import SSA
 import SSAProp
 import SSAFold
 import SSAReduce
+import SSASimpl
 import SSAElim
 import Closure (CVardef, CFundef(..), trans)
 
@@ -74,7 +75,7 @@ repl str = do
       putStrLn "ssa:"
       print ssa
       putStrLn "**** optimized SSA ****"
-      let optSSA = iterate (eliminate . reduce . constFold . propagate) ssa !! 10
+      let optSSA = iterate (eliminate . simplify . reduce . constFold . propagate) ssa !! 10
       print optSSA
       {- 
       asm <- emitAsm cfuns cexp
