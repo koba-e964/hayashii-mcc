@@ -33,7 +33,7 @@ data SSAFundef = SSAFundef
 
 instance Show SSAFundef where
   show (SSAFundef (LId n :-: funTy) args formFV blks) = 
-    "def @" ++ n ++ "(" ++ List.intercalate ", " (map (\(_ :-: ty) -> show ty) args) ++ ") : " ++ show retTy ++ "\n" ++ show blks
+    "def @" ++ n ++ "(" ++ List.intercalate ", " (map (\(VId n :-: ty) -> "$" ++ n ++ " : " ++ show ty) args) ++ ") : " ++ show retTy ++ "\n" ++ show blks
    where
     TFun _ retTy = funTy
 
