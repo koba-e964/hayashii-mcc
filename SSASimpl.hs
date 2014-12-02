@@ -24,7 +24,10 @@ simplFundef fundef@(SSAFundef {blocks = blks} ) =
 simplBlocks :: [Block] -> [Block]
 simplBlocks blocks = f where
   ok blk@(Block blkID insts term) =
-    if length insts >= 2 then Nothing else Just (blkID, (insts, term))
+    if length insts >= 2 then Nothing else
+      case term of
+        TRet {} -> Just (blkID, (insts, term))
+        _       -> Nothing
   env = Map.fromList $ catMaybes $ map ok blocks
   f = map (replace env) blocks
 
@@ -82,7 +85,7 @@ replace :: BlockEnv -> Block -> Block
 replace env blk@(Block blkId insts term) =
   case term of
     TJmp dest | blkId /= dest {- to avoid recursion -} && Map.member dest env ->
-      append (env Map.! dest) blk {- TODO variable renaming and phi elimination are not performed. -}
+      append (env Map.! dest) blk
     _ -> blk
   
 
