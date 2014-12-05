@@ -27,6 +27,8 @@ FLOAT {FLOAT $$}
 NOT {NOT}
 "-" {MINUS}
 "+" {PLUS}
+"*" {AST}
+"/" {SLASH}
 "-." {MINUS_DOT}
 "+." {PLUS_DOT}
 "*." {AST_DOT}
@@ -51,18 +53,17 @@ ARRAY_CREATE {ARRAY_CREATE}
 ";" {SEMICOLON}
 "(" {LPAREN}
 ")" {RPAREN}
-"(*" {COMM_BEGIN}
-"*)" {COMM_END}
-UNKNOWN { UNKNOWN $$ }
 
 %right prec_let
 %right ";"
 %right prec_if
 %right "<-"
 %left ","
+%left prec_tuple_m
+%left prec_tuple_s
 %left "=" "<>" "<" ">" "<=" ">="
 %left "+" "-" "+." "-."
-%left "*." "/."
+%left "*." "/." "*" "/"
 %right prec_unary_minus
 %left prec_app
 %left "."
@@ -70,7 +71,7 @@ UNKNOWN { UNKNOWN $$ }
 %%
 
 simple_exp: -- /* 括弧をつけなくても関数の引数になれる式 (caml2html: parser_simple) */
-  "(" exp ")"
+  "(" exp_tuple ")"
     { $2 }
 | "(" ")"
     { Unit }
@@ -88,10 +89,10 @@ simple_exp: -- /* 括弧をつけなくても関数の引数になれる式 (cam
 exp: -- 一般の式 
   simple_exp
     { $1 }
-| NOT exp
+| NOT simple_exp
     %prec prec_app
     { Not($2) }
-| "-" exp
+| "-" simple_exp
     %prec prec_unary_minus
     { case $2 of {
       Float f -> Float (- f); -- -1.23などは型エラーではないので別扱い
@@ -101,6 +102,10 @@ exp: -- 一般の式
     { ArithBin Add $1 $3 }
 | exp "-" exp
     { ArithBin Sub $1 $3 }
+| exp "*" exp
+    { ArithBin Mul $1 $3 }
+| exp "/" exp
+    { ArithBin Div $1 $3 }
 | exp "=" exp
     { Cmp Eq $1 $3 }
 | exp "<>" exp
@@ -116,7 +121,7 @@ exp: -- 一般の式
 | IF exp THEN exp ELSE exp
     %prec prec_if
     { If $2 $4 $6 }
-| "-." exp
+| "-." simple_exp
     %prec prec_unary_minus
     { FNeg $2  }
 | exp "+." exp
@@ -133,12 +138,10 @@ exp: -- 一般の式
 | LET REC fundef IN exp
     %prec prec_let
     { LetRec $3 $5 }
-| exp actual_args
+| simple_exp actual_args
     %prec prec_app
     { App $1 $2 }
-| elems
-    { Tuple $1 }
-| LET "(" pat ")" "=" exp IN exp
+| LET "(" pat ")" "=" exp IN exp %prec prec_let
     { LetTuple $3 $6 $8 }
 | simple_exp "." "(" exp ")" "<-" exp
     { Put $1 $4 $7 }
@@ -148,6 +151,14 @@ exp: -- 一般の式
     %prec prec_app
     { Array $2 $3 }
 ;
+
+exp_tuple:
+  exp
+    { $1 }
+| elems
+    { Tuple $1 }
+;
+
 fundef:
   ID formal_args "=" exp
     { Fundef { name = addType $1, args = $2, body = $4 } }
@@ -167,9 +178,9 @@ actual_args:
     { [$1] }
 ;
 elems:
-  elems "," exp
+  elems "," exp %prec prec_tuple_m
     { $1 ++ [$3] }
-| exp "," exp
+| exp "," exp %prec prec_tuple_s
     { [$1, $3] }
 ;
 pat:
@@ -183,14 +194,14 @@ pat:
 library:
   declare
    { [$1] }
-| declare library
-   { $1 : $2 }
+| library declare
+   { $1 ++ [$2] }
 ;
 
 declare:
-  LET ID "=" exp
+  LET ID "=" exp %prec prec_let
    { VarDec $2 $4 }
-| fundef
+| LET REC fundef %prec prec_let
    { FunDec $1 }
 ;
 {
