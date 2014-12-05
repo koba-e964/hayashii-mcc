@@ -202,7 +202,7 @@ declare:
   LET ID "=" exp %prec prec_let
    { VarDec $2 $4 }
 | LET REC fundef %prec prec_let
-   { FunDec $1 }
+   { FunDec $3 }
 ;
 {
 
