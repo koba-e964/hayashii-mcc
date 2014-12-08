@@ -1,16 +1,15 @@
 {-# LANGUAGE FlexibleContexts #-}
 module KNormal where
 
-import Control.Monad
-import Control.Monad.Reader
+import Control.Monad.Reader (MonadReader, ReaderT, asks, runReader)
 import Data.Set (Set, difference, union)
 import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Debug.Trace
+import Debug.Trace (trace)
 
 import Id (CounterT, Id(Id), runCounterT)
-import qualified Id as Id
+import qualified Id
 import Type
 import Typing
 import Syntax hiding (name, args, body)
@@ -129,16 +128,16 @@ kNormalSub env expr = case expr of
       let env' = Map.insert x t env
       e2'@(_ :-: t2) <- kNormalSub env' e2
       e1'@(_ :-: _t1) <- kNormalSub (Map.fromList yts `Map.union` env') e1
-      return (KLetRec (KFundef { name = (x, t), args = yts, body = e1' }) e2' :-: t2)
+      return (KLetRec KFundef { name = (x, t), args = yts, body = e1' } e2' :-: t2)
   App (Var f) e2s | Map.notMember f env -> do
     maybeTy <- asks (Map.lookup f)
     case maybeTy of
       Just (TFun _ t) -> 
         let bind xs ls = case ls of
               [] -> return (KExtFunApp f xs :-: t)
-              e2 : e2s -> do
+              e2 : rest -> do
                 sub <- kNormalSub env e2
-                insertLet sub (\x -> bind (xs ++ [x]) e2s) in
+                insertLet sub (\x -> bind (xs ++ [x]) rest) in
           bind [] e2s
       _ -> error "error 138-30"
   App e1 e2s -> do
@@ -198,7 +197,7 @@ kNormalSub env expr = case expr of
                 (\ z -> return (KPut x y z :-: TUnit))))
 
 kNormalM :: Monad m => Syntax -> CounterT (ReaderT TypeEnv m) KNormal
-kNormalM e = kNormalSub Map.empty e
+kNormalM = kNormalSub Map.empty
 
 kNormal :: TypeEnv -> Syntax -> KNormal
 kNormal extenv e = runReader (runCounterT (kNormalM e)) extenv
