@@ -1,8 +1,8 @@
 module Syntax where
 
-import qualified Id as Id
+import qualified Id
 import Id (Id(..))
-import qualified Type as Type
+import qualified Type
 
 -- | Data type that represents MinCaml AST.
 data Syntax
