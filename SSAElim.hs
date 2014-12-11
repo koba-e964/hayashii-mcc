@@ -9,7 +9,7 @@ import qualified Data.Set as Set
 {- for every instruction x := op, if @x@ does not appear in right-side, assignment to @x@ is eliminated. -}
 elimDest :: SSAFundef -> SSAFundef
 elimDest fundef@(SSAFundef {blocks = blks} ) =
-  let appearance = concat (map fvBlock blks) in
+  let appearance = concatMap fvBlock blks in
   fundef { blocks = map (removeDest appearance) blks }
 
 
@@ -40,7 +40,7 @@ fvOperand _ = []
 removeDest :: [VId] -> Block -> Block
 removeDest app (Block blkId insts term) = Block blkId (map f insts) term
   where
-    f (Inst (Just vid) op) | notElem vid app = Inst Nothing op
+    f (Inst (Just vid) op) | vid `notElem` app = Inst Nothing op
     f e = e
 
 elimUselessInstructions :: SSAFundef -> SSAFundef
