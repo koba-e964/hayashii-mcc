@@ -96,7 +96,7 @@ typingSub syn = case syn of
   LetRec (Fundef { name = (x, ty), args = ls, body = e1}) e2 -> do
     newenv <- asks (Map.insert x ty)
     let argsenv = Map.fromList ls `Map.union` newenv
-    TFun (map snd ls) <$> (local (const argsenv) (typingSub e1)) >>= unify ty
+    TFun (map snd ls) <$> local (const argsenv) (typingSub e1) >>= unify ty
     local (const newenv) (typingSub e2)
   App e es -> do
     t <- uniqType
