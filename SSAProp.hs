@@ -4,8 +4,8 @@ module SSAProp where
 import Id
 import SSA
 import Type
-import Control.Monad
-import Control.Monad.State
+import qualified Control.Arrow
+import Control.Monad.State (MonadState, evalState, get, modify)
 import Data.Map (Map)
 import qualified Data.Map as Map
 
@@ -13,8 +13,8 @@ type ConstEnv = Map VId Operand
 
 
 propFundef :: SSAFundef -> SSAFundef
-propFundef (SSAFundef nty args formFV blks) = 
-  (SSAFundef nty args formFV (map constPropBlock blks))
+propFundef (SSAFundef nty params formFV blks) =
+  SSAFundef nty params formFV (map constPropBlock blks)
 
 constPropBlock :: Block -> Block
 constPropBlock blk = evalState (cpb blk) Map.empty
@@ -47,7 +47,7 @@ propInst (Inst dest op) = do
     SCall lid operands ->
       return $ SCall lid (map (prop env) operands)
     SPhi ls ->
-      return $ SPhi $ map (\(blkId, x) -> (blkId, prop env x)) ls
+      return $ SPhi $ map (Control.Arrow.second (prop env)) ls
   return $ Inst dest result
 
 propTerm :: (MonadState ConstEnv m) => Term -> m Term
@@ -57,7 +57,7 @@ propTerm (TRet x) = do
 propTerm (TBr x blk1 blk2) = do
   env <- get
   return $ TBr (prop env x) blk1 blk2
-propTerm t@(TJmp {}) = return $ t
+propTerm t@(TJmp {}) = return t
 
 {- @prop env op@ returns op itself or constant assigned to @op@. -}
 prop :: ConstEnv -> Operand -> Operand
