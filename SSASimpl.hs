@@ -3,14 +3,12 @@ module SSASimpl where
 import Id
 import SSA
 import Type
-import Syntax
 import qualified Data.Map as Map
+import qualified Control.Arrow
 import Control.Monad.Reader
 
 import Data.Maybe
 import qualified Data.List as List
-
-import Debug.Trace
 
 type Snippet = ([Inst], Term)
 type BlockEnv = Map.Map BlockID Snippet
@@ -22,28 +20,29 @@ simplFundef fundef@(SSAFundef {blocks = blks} ) =
   fundef { blocks = simplBlocks blks }
 
 simplBlocks :: [Block] -> [Block]
-simplBlocks blocks = f where
-  ok blk@(Block blkID insts term) =
+simplBlocks blks = map (replace env) blks where
+  ok (Block blkID insts term) =
     if length insts >= 2 then Nothing else
       case term of
         TRet {} -> Just (blkID, (insts, term))
         _       -> Nothing
-  env = Map.fromList $ catMaybes $ map ok blocks
-  f = map (replace env) blocks
+  env = Map.fromList $ mapMaybe ok blks
 
 
 
 append :: Snippet -> Block -> Block
 append (inst, term) (Block blkId insts _) = Block blkId (insts ++ renamedInst) renamedTerm where
-  f (Inst d op, i) = case d of
+  f (Inst d _, i) = case d of
     Just (VId dd) -> [(VId dd, VId (dd ++ "." ++ blkId ++ "." ++ show i))]
     Nothing -> []
-  novum = Map.fromList $ concatMap f (zip inst [0..])
+  novum = Map.fromList $ concatMap f (zip inst [(0 :: Int)..])
   renamedInst = map (replaceInst novum . removePhi blkId) inst
   renamedTerm = replaceTerm novum term
 
+
+removePhi :: BlockID -> Inst -> Inst
 removePhi blkId (Inst d op) = Inst d $ case op of
-  SPhi ls -> SId $ List.head $ map snd $ filter (\(x,_) -> x == blkId) $ ls
+  SPhi ls -> SId $ List.head $ map snd $ filter (\(x,_) -> x == blkId) ls
   _ -> op
 
 replaceVId :: Map.Map VId VId -> VId -> VId
@@ -53,7 +52,7 @@ replaceVId env x =
   else x
 
 replaceOperand :: Map.Map VId VId -> Operand -> Operand
-replaceOperand env x@(OpConst _) = x
+replaceOperand _env x@(OpConst _) = x
 replaceOperand env (OpVar (v :-: t)) = OpVar (replaceVId env v :-: t)
 
 replaceInst :: Map.Map VId VId -> Inst -> Inst
@@ -71,8 +70,8 @@ replaceOp env op = case op of
   SCmpBin o x y -> SCmpBin o (replaceOperand env x) (replaceOperand env y)
   SNeg x -> SNeg (replaceOperand env x)
   SFNeg x -> SFNeg (replaceOperand env x)
-  SCall lid args -> SCall lid (map (replaceOperand env) args)
-  SPhi ls -> SPhi (map (\(blkID, x) -> (blkID, replaceOperand env x)) ls) 
+  SCall lid argv -> SCall lid (map (replaceOperand env) argv)
+  SPhi ls -> SPhi (map (Control.Arrow.second (replaceOperand env)) ls) 
 
 replaceTerm :: Map.Map VId VId -> Term -> Term
 replaceTerm env term = case term of
@@ -82,7 +81,7 @@ replaceTerm env term = case term of
 
 
 replace :: BlockEnv -> Block -> Block
-replace env blk@(Block blkId insts term) =
+replace env blk@(Block blkId _insts term) =
   case term of
     TJmp dest | blkId /= dest {- to avoid recursion -} && Map.member dest env ->
       append (env Map.! dest) blk
@@ -93,3 +92,4 @@ replace env blk@(Block blkId insts term) =
 {- Simplifies the CFG. -}
 simplify :: [SSAFundef] -> [SSAFundef]
 simplify = map simplFundef
+
