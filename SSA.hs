@@ -3,23 +3,24 @@
 module SSA where
 
 
-import Closure
+import Closure hiding (args)
 import Type
 import Typing (TypeEnv)
-import Id
-import Syntax
+import Id hiding (fresh)
+import Syntax hiding (args)
 
 
 import Control.Applicative ((<$>))
-import Control.Monad.Reader
-import Data.Int
+import Control.Monad (forM, forM_)
+import Control.Monad.Reader (Reader, asks)
+import Control.Monad.State (MonadState, StateT, execStateT, gets, modify)
+import Control.Monad.Trans (lift)
+import Data.Int (Int32)
 import qualified Data.List as List
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Maybe
+import Data.Maybe (fromJust, fromMaybe)
 
-import Control.Monad.Identity
-import Control.Monad.State
 
 type M = CounterT (Reader TypeEnv)
 
@@ -32,11 +33,11 @@ data SSAFundef = SSAFundef
   } deriving (Eq)
 
 instance Show SSAFundef where
-  show (SSAFundef (LId n :-: funTy) args formFV blks) = 
-    "def @" ++ n ++ "(" ++ List.intercalate ", " (map (\(VId n :-: ty) -> "$" ++ n ++ " : " ++ show ty) args) ++ ") : " ++ show retTy ++ "\n" ++ show blks
+  show (SSAFundef (LId n :-: funTy) args_ _formFV blks) = 
+    "def @" ++ n ++ "(" ++ List.intercalate ", " (map showArg args_) ++ ") : " ++ show retTy ++ "\n" ++ show blks
    where
     TFun _ retTy = funTy
-
+    showArg (VId nm :-: ty) = "$" ++ nm ++ " : " ++ show ty
 entryBlockName :: BlockID
 entryBlockName = "entry"
 
@@ -100,16 +101,17 @@ ssaTrans defs (expr :-: ty) = do
   return (defsTrans ++ [mainTrans])
 
 ssaTransFun :: CFundef -> M SSAFundef
-ssaTransFun (CFundef (VId lid, ty) args formFV expr) =
-  let typedArg = map (\(x,t) -> x :-: t) args in
-  let typedFV  = map (\(x,t) -> x :-: t) formFV in
-  SSAFundef (LId lid :-: ty) typedArg typedFV <$> (fmap getBlocks $ execStateT (ssaTransExpr expr) (emptyState (typedArg ++ typedFV)))
+ssaTransFun (CFundef (VId lid, ty) args_ formFV expr) =
+  let toTyped (x, t) = x :-: t in
+  let typedArg = map toTyped args_ in
+  let typedFV  = map toTyped formFV in
+  SSAFundef (LId lid :-: ty) typedArg typedFV <$> (getBlocks <$> execStateT (ssaTransExpr expr) (emptyState (typedArg ++ typedFV)))
 
 
 ssaTransExpr :: ClosExp -> StateT CgenState M ()
 getOperand :: ClosExp -> StateT CgenState M Operand
 
-ssaTransExpr exprty@(expr :-: ty) = do
+ssaTransExpr exprty = do
   op <- getOperand exprty
   addTerm (TRet op)
 getOperand (expr :-: ty) = case expr of
@@ -125,9 +127,9 @@ getOperand (expr :-: ty) = case expr of
     addInst (Inst (Just fresh) (SFNeg (OpVar (vid :-: TFloat))))
     return (OpVar (fresh :-: TFloat))
   CIf operator x y e1 e2 -> do
-    ty <- lookupTypeInfo x
+    oty <- lookupTypeInfo x
     fresh <- freshVar TInt
-    addInst $ Inst (Just fresh) $ SCmpBin operator (OpVar (x :-: ty)) (OpVar (y :-: ty))
+    addInst $ Inst (Just fresh) $ SCmpBin operator (OpVar (x :-: oty)) (OpVar (y :-: oty))
     thenBlk <- newBlock "then"
     elseBlk <- newBlock "else"
     contBlk <- newBlock "cont"
@@ -145,10 +147,10 @@ getOperand (expr :-: ty) = case expr of
     retFresh <- freshVar retTy
     addInst $ Inst (Just retFresh) $ SPhi [(thenEnd, oth), (elseEnd, oel)]
     return (OpVar (retFresh :-: retTy))
-  CLet vid@(VId i) ty e1 e2 -> do
+  CLet vid vty e1 e2 -> do
     res <- getOperand e1
     addInst (Inst (Just vid) (SId res))
-    addTypeInfo vid ty 
+    addTypeInfo vid vty 
     getOperand e2
   CVar vid -> return (OpVar (vid :-: ty))
   CArithBin op x y -> do
@@ -159,31 +161,31 @@ getOperand (expr :-: ty) = case expr of
     fresh <- freshVar TFloat
     addInst $ Inst (Just fresh) $ SFloatBin op (OpVar (x :-: TFloat)) (OpVar (y :-: TFloat))
     return (OpVar (fresh :-: TFloat))
-  CMakeCls clsVid@(VId clsName) ty clos expr -> do
+  CMakeCls clsVid cty _ e -> do
     {- TODO No initialization is performed. -}
-    addTypeInfo clsVid ty
-    getOperand expr    
-  CAppCls fun@(VId funname) args -> do
-    funType@(TFun argType retType) <- lookupTypeInfo fun
+    addTypeInfo clsVid cty
+    getOperand e
+  CAppCls fun@(VId funname) args_ -> do
+    TFun argType retType <- lookupTypeInfo fun
     fresh <- freshVar retType
     let clsType = TArray TUnit
     let clsId = OpVar (fun :-: clsType)
-    argsId <- forM args $ \vx -> do
-      ty <- lookupTypeInfo vx
-      return (OpVar (vx :-: ty))
+    argsId <- forM args_ $ \vx -> do
+      vty <- lookupTypeInfo vx
+      return (OpVar (vx :-: vty))
     addInst $ Inst (Just fresh) $ SCall (LId funname :-: TFun (clsType : argType) retType)  (clsId : argsId)
     return (OpVar (fresh :-: retType))
-  CAppDir fun@(LId funname) args -> do
-    funType@(TFun _ retType) <- do
+  CAppDir fun@(LId funname) args_ -> do
+    funType@(TFun _ retType) <-
       if funname == "min_caml_create_array" then
          let TArray elemTy = ty in
            return $ TFun [TInt,elemTy] ty
       else
         asks (fromMaybe (error $ "type of " ++ show fun ++ " is not found") . Map.lookup (Id funname))
     fresh <- freshVar retType
-    argsId <- forM args $ \vx -> do
-      ty <- lookupTypeInfo vx
-      return (OpVar (vx :-: ty))
+    argsId <- forM args_ $ \vx -> do
+      vty <- lookupTypeInfo vx
+      return (OpVar (vx :-: vty))
     addInst $ Inst (Just fresh) $ SCall (fun :-: funType) argsId
     return (OpVar (fresh :-: retType))
   CTuple elems -> do
@@ -197,12 +199,11 @@ getOperand (expr :-: ty) = case expr of
       let (argid, argty) = zip elems elemTy !! i
       arrayPut (OpVar (fresh :-: retType)) (ci32 (4 * i)) (OpVar (argid :-: argty))
     return (OpVar (fresh :-: retType))
-  CLetTuple elems tuple expr -> do
-    let size = 4 * length elems {- TODO This code assumes that sizeof int, float, ptr are all 4. -}
+  CLetTuple elems tuple e -> do
     forM_ [0 .. length elems - 1] $ \i -> do
       let (argid, argTy) = elems !! i
-      addInst $ Inst (Just argid) $ SCall (LId "array_get" :-: (TFun [TArray TUnit, TInt] argTy)) [OpVar (tuple :-: TArray TUnit), ci32 (4 * i)]
-    getOperand expr
+      addInst $ Inst (Just argid) $ SCall (LId "array_get" :-: TFun [TArray TUnit, TInt] argTy) [OpVar (tuple :-: TArray TUnit), ci32 (4 * i)] {- TODO This code assumes that sizeof int, float, ptr are all 4. -}
+    getOperand e
   CGet x y -> do
     xty <- lookupTypeInfo x
     yty <- lookupTypeInfo y
@@ -213,7 +214,7 @@ getOperand (expr :-: ty) = case expr of
     zty <- lookupTypeInfo z
     arrayPut (OpVar (x :-: xty)) (OpVar (y :-: yty)) (OpVar (z :-: zty))
     return (OpConst UnitConst)
-  CExtArray (LId x) -> 
+  CExtArray (LId _) -> 
     error "Undefined instruction: extarray"
 data CgenState = CgenState
   { blockIdx :: Int
@@ -227,13 +228,13 @@ ci32 i = OpConst (IntConst (fromIntegral i))
 
 arrayPut :: MonadState CgenState m => Operand -> Operand -> Operand -> m ()
 arrayPut aryOp idxOp elemOp =
-  addInst $ Inst Nothing $ SCall (LId "array_put" :-: (TFun [getType aryOp, TInt, getType elemOp] TUnit))
+  addInst $ Inst Nothing $ SCall (LId "array_put" :-: TFun [getType aryOp, TInt, getType elemOp] TUnit)
     [aryOp, idxOp, elemOp]
 arrayGet :: Operand -> Operand -> StateT CgenState M Operand
 arrayGet aryOp idxOp = do
   let aryTy@(TArray elemTy) = getType aryOp
   fresh <- freshVar　elemTy
-  addInst $ Inst (Just fresh) $ SCall (LId "array_get" :-: (TFun [aryTy, TInt] elemTy))
+  addInst $ Inst (Just fresh) $ SCall (LId "array_get" :-: TFun [aryTy, TInt] elemTy)
     [aryOp, idxOp]
   return (OpVar (fresh :-: elemTy))
 
