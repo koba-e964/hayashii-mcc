@@ -12,7 +12,7 @@ build-type:          Simple
 -- extra-source-files:  
 cabal-version:       >=1.10
 
-executable min-caml
+executable min-caml-llvm
   main-is:             Main.hs
   other-modules:       MLexer, MParser
   ghc-options:         -Wall
@@ -21,6 +21,16 @@ executable min-caml
   hs-source-dirs:      ./, llvm/
   build-tools:         alex, happy
   default-language:    Haskell2010
+
+executable min-caml-zek
+  main-is:             Main.hs
+  other-modules:       MLexer, MParser
+  ghc-options:         -Wall
+  build-depends:       base >=4 && <5, array >=0.4, mtl >=2.2, containers >=0.5, primitive >=0.5, transformers >=0.3.0.0
+  hs-source-dirs:      ./, zekamashi/
+  build-tools:         alex, happy
+  default-language:    Haskell2010
+
 
 Test-Suite test-parser
     type:       exitcode-stdio-1.0
