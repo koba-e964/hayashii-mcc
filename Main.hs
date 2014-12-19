@@ -12,7 +12,6 @@ import MParser (parse)
 import Typing
 import KNormal (kNormal)
 import Alpha (alpha)
-import Emit
 import SSA
 import SSAProp
 import SSAFold
@@ -20,6 +19,7 @@ import SSAReduce
 import SSASimpl
 import SSAElim
 import Closure (CVardef, CFundef(..), trans)
+import Virtual
 
 
 data Config = Config { threshold :: !Int, limit :: !Int, glib :: ![String] }
@@ -77,11 +77,9 @@ repl str = do
       putStrLn "**** optimized SSA ****"
       let optSSA = iterate (eliminate . simplify . reduce . constFold . propagate) ssa !! 10
       print optSSA
-      {- 
-      asm <- emitAsm cfuns cexp
-      putStrLn "asm code:"
-      putStrLn asm
-      -}
+      putStrLn "**** Phi-eliminated SSA ****"
+      let peSSA = elimPhi optSSA
+      print peSSA
     Left x -> error x
 
 processLib :: [String] -> IO (TypeEnv, [CVardef])
