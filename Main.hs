@@ -19,6 +19,7 @@ import SSAReduce
 import SSASimpl
 import SSAElim
 import Closure (CVardef, CFundef(..), trans)
+import RegAlloc
 import Virtual
 
 
@@ -77,8 +78,11 @@ repl str = do
       putStrLn "**** optimized SSA ****"
       let optSSA = iterate (eliminate . simplify . reduce . constFold . propagate) ssa !! 10
       print optSSA
+      putStrLn "**** register-allocated SSA ****"
+      let regSSA = regAlloc optSSA
+      print regSSA
       putStrLn "**** Phi-eliminated SSA ****"
-      let peSSA = elimPhi optSSA
+      let peSSA = elimPhi regSSA
       print peSSA
     Left x -> error x
 
