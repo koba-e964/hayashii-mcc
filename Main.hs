@@ -21,7 +21,7 @@ import SSAElim
 import Closure (CVardef, CFundef(..), trans)
 import RegAlloc
 import Virtual
-
+import Emit
 
 data Config = Config { threshold :: !Int, limit :: !Int, glib :: ![String] }
 
@@ -84,6 +84,8 @@ repl str = do
       putStrLn "**** Phi-eliminated SSA ****"
       let peSSA = elimPhi regSSA
       print peSSA
+      let insts = concatMap emitFundef peSSA
+      print insts
     Left x -> error x
 
 processLib :: [String] -> IO (TypeEnv, [CVardef])
