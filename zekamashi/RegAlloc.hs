@@ -1,6 +1,8 @@
+{- One of the most naive register allocation -}
 module RegAlloc where
 
 import Control.Applicative
+import qualified Control.Arrow
 import Control.Monad.State
 import Data.Bits
 import Data.Maybe
@@ -8,6 +10,7 @@ import Data.Word
 import qualified Data.Map as Map
 import SSA hiding (M)
 import Id
+import Type
 
 data RegEnv = RegEnv { regmap :: !(Map.Map String Loc), gregs :: !Word32, fregs :: !Word32, stack :: !Int }
 emptyEnv :: RegEnv
@@ -20,20 +23,21 @@ instance Show Loc where
   show (Stack i) = "st" ++ show i
 
 regAlloc :: [SSAFundef] -> [SSAFundef]
-regAllocBlocks :: [Block] -> [Block]
-rab :: [Block] -> M [Block]
 
 
 regAlloc = map regAllocFundef where
-  regAllocFundef (SSAFundef nty params formFV blks) =
-    SSAFundef nty params formFV (regAllocBlocks blks)
+  regAllocFundef fundef = evalState (rab fundef) emptyEnv
 
-regAllocBlocks blk = evalState (rab blk) emptyEnv
-
-rab blk = do
-  let vars = concatMap varsBlock blk
-  _locs <- mapM newReg vars {- TODO ignoring instructions -}
-  mapM replace blk
+rab (SSAFundef nty params formFV blks) = do
+  let vars = concatMap varsBlock blks
+  forM_ params $ \(vid :-: ty) ->
+    newReg vid {- TODO ignoring type, should allocate fixed register -}
+  mapM_ newReg vars {- TODO ignoring instructions -}
+  newBlks <- mapM replace blks
+  newParams <- forM params $ \(vid :-: ty) -> do
+    l <- getLoc vid
+    return $! l :-: ty
+  return $! SSAFundef nty newParams formFV newBlks
 
 varsBlock :: Block -> [VId]
 varsBlock (Block blkId insts term) = concatMap f insts where
@@ -49,26 +53,62 @@ replaceInst (Inst mvid op) = do
   Inst newMvid <$> replaceOp op
 
 
-replaceOp op = return op
-replaceTerm term = return term
+replaceOp op = do
+  case op of
+    SId c ->
+      return $ SId c
+    SArithBin operator x y ->
+      SArithBin operator <$> replaceOperand x <*> replaceOperand y
+    SCmpBin operator x y ->
+      SCmpBin operator <$> replaceOperand x <*> replaceOperand y
+    SNeg x ->
+      SNeg <$> replaceOperand x
+    SFNeg x ->
+      SFNeg <$> replaceOperand x
+    SFloatBin operator x y ->
+      SFloatBin operator <$> replaceOperand x <*> replaceOperand y
+    SCall lid operands ->
+      SCall lid <$> mapM replaceOperand operands
+    SPhi ls ->
+      let f (x, y) = do { r <- replaceOperand y; return (x, r);} in
+      SPhi <$> mapM f ls
+
+replaceOperand op = case op of
+  OpConst _ -> return op
+  OpVar (VId nm :-: ty) -> do
+    env <- gets regmap
+    return $ OpVar (VId (show (env Map.! nm)) :-: ty)
+replaceTerm term = case term of
+  TRet op -> TRet <$> replaceOperand op
+  TBr op b1 b2 -> do
+    repOp <- replaceOperand op
+    return $! TBr repOp b1 b2
+  TJmp _ -> return term
 
 getLoc :: VId -> M VId
 getLoc (VId nm) = do
   x <- gets (fromJust . Map.lookup nm . regmap)
   return $! VId $! show x
-newReg :: VId -> M Loc
+newReg :: VId -> M ()
 newReg (VId vname) = do
   RegEnv rmap gr fr st <- get
   let vac = complement gr
   if vac == 0 then do
     let sst = Stack st
     modify $ \s -> s { regmap = Map.insert vname sst rmap, stack = st + 1 }
-    return $! sst
   else do
     let min = vac .&. (- vac)
     let num = popCount (min - 1)
     let reg = Reg num
-    modify $ \s -> s { regmap = Map.insert vname reg rmap, gregs = gr .|. min }
-    return $! reg
+    allocReg reg (VId vname)
+allocReg :: Loc -> VId -> M ()
+allocReg reg (VId vname) = do
+  RegEnv rmap gr _ _ <- get
+  case reg of
+    Reg regnum ->
+      let pos = 1 `shiftL` regnum in
+      modify $ \s -> s { regmap = Map.insert vname reg rmap, gregs = gr .|. pos }
+    Stack _ ->
+      modify $ \s -> s { regmap = Map.insert vname reg rmap }
 freeReg :: Loc -> M ()
-freeReg v = undefined
+freeReg _v = undefined
