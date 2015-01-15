@@ -84,8 +84,8 @@ repl str = do
       putStrLn "**** Phi-eliminated SSA ****"
       let peSSA = elimPhi regSSA
       print peSSA
-      let insts = concatMap emitFundef peSSA
-      print insts
+      let insts = emit peSSA
+      mapM_ print insts
     Left x -> error x
 
 processLib :: [String] -> IO (TypeEnv, [CVardef])

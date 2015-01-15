@@ -9,28 +9,36 @@ import Type
 import Inst
 import SSA
 
+rtmp = Reg 28
+rlr = Reg 29
+
+emit :: [SSAFundef] -> [ZekInst]
+emit fundefs = [Br rtmp "main"] ++ concatMap emitFundef fundefs
 
 
 emitFundef :: SSAFundef -> [ZekInst]
-emitFundef (SSAFundef nty params formFV blks) =
-  concatMap emitBlock blks
+emitFundef (SSAFundef (LId nm :-: ty) params formFV blks) =
+  [Label nm] ++
+   concatMap emitBlock blks
+  ++ [Ret rtmp rlr]
 
 emitBlock :: Block -> [ZekInst]
 emitBlock (Block blkId insts term) = concatMap emitInst insts ++ emitTerm term
 
-emitInst (Inst dest op) = emitSub dest op
+emitInst (Inst dest op) = emitSub True dest op
   
 
-emitTerm (TRet v) = emitSub (Just (VId "$0")) (SId v)
+emitTerm (TRet v) = emitSub False (Just (VId "$0")) (SId v)
 
 
-emitSub :: Maybe VId -> Op -> [ZekInst]
-emitSub Nothing (SCall (LId lid :-: ty) ops) = [Bsr (Reg 28) lid]
-emitSub Nothing _ = []
-emitSub (Just (VId nm)) (SCall (LId lid :-: ty) ops) = [Bsr (Reg 28) lid, cp "$0" nm]
-emitSub (Just (VId nm)) (SId (OpVar (VId src :-: ty))) = [Lda (regOfString nm) 0 (regOfString src)]
-emitSub (Just (VId nm)) (SId (OpConst (IntConst x))) = [Lda (Reg 0) (fromIntegral x) (Reg 31)]
-emitSub (Just (VId nm)) (SArithBin Add (OpVar (VId src :-: ty)) op2) = [Addl (regOfString src) (regimmOfOperand op2) (regOfString nm)]
+emitSub :: Bool -> Maybe VId -> Op -> [ZekInst]
+emitSub _ Nothing (SCall (LId lid :-: ty) ops) = [Bsr (Reg 28) lid]
+emitSub _ Nothing _ = []
+emitSub True (Just (VId nm)) (SCall (LId lid :-: ty) ops) = [Bsr rlr lid, cp "$0" nm]
+emitSub False (Just (VId nm)) (SCall (LId lid :-: ty) ops) = [Br rtmp lid]
+emitSub _ (Just (VId nm)) (SId (OpVar (VId src :-: ty))) = [Lda (regOfString nm) 0 (regOfString src)]
+emitSub _ (Just (VId nm)) (SId (OpConst (IntConst x))) = [Lda (Reg 0) (fromIntegral x) (Reg 31)]
+emitSub _ (Just (VId nm)) (SArithBin Add (OpVar (VId src :-: ty)) op2) = [Addl (regOfString src) (regimmOfOperand op2) (regOfString nm)]
 
 
 cp src dest = mov (regOfString src) (regOfString dest)
