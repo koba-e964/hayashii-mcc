@@ -9,8 +9,15 @@ import Type
 import Inst
 import SSA
 
+
+rcl = Reg 25
+rtmp2 = Reg 26
+rhp = Reg 27
 rtmp = Reg 28
 rlr = Reg 29
+rsp = Reg 30
+frtmp = FReg 30
+
 
 
 data TailInfo = Tail | NonTail !(Maybe VId)
@@ -38,7 +45,9 @@ emitSub :: TailInfo -> Op -> [ZekInst]
 emitSub Tail (SCall (LId lid :-: ty) ops) = [Br rlr lid]
 emitSub (NonTail Nothing) (SCall (LId lid :-: ty) ops) = [Bsr rlr lid]
 emitSub (NonTail Nothing) _ = [] -- if not SCall there is no side-effect.
-emitSub (NonTail (Just (VId nm))) (SCall (LId lid :-: ty) ops) = [Bsr rlr lid, cp "$0" nm]
+emitSub (NonTail (Just (VId nm))) (SCall (LId lid :-: ty) ops) =
+  let q = emitArgs [] ops in
+  q ++[Bsr rlr lid, cp "$0" nm]
 emitSub Tail (SCall (LId lid :-: ty) ops) = [Br rtmp lid]
 emitSub (NonTail (Just (VId nm))) (SId (OpVar (VId src :-: ty))) =
     [Lda (regOfString nm) 0 (regOfString src)]
@@ -76,10 +85,48 @@ retReg ty =
 cp :: String -> String -> ZekInst
 cp src dest = mov (regOfString src) (regOfString dest)
 
+
+emitArgs :: [(Reg, Reg)] -> [Operand] -> [ZekInst]
+emitArgs x_reg_cl ops =
+  let (ys, zs) = List.partition (\x -> getType x /= TFloat) ops in
+  let (i, yrs) = List.foldl'
+        (\(i, yrs) y -> (i + 1, (y, OpVar (VId (show (Reg i)) :-: getType y)) : yrs))
+        (0, map (\(x, reg_cl) -> (operandOfReg x, operandOfReg reg_cl)) x_reg_cl) ys in
+  let gprs = List.map
+        (\ (y, r) -> movOperand y r)
+        (shuffle (operandOfReg rtmp) yrs) in
+  let (d, zfrs) = List.foldl'
+        (\(d, zfrs) z -> (d + 1, (z, OpVar (VId (show (FReg d)) :-: getType z)) : zfrs))
+        (0, []) zs in
+  let fregs = List.map
+        (\ (z, fr) -> fmovOperand z fr)
+        (shuffle (OpVar (VId (show frtmp) :-: TFloat)) zfrs) in
+    gprs ++ fregs
+  where
+    operandOfReg x = OpVar (VId (show x) :-: TInt)
+    movOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = mov (regOfString a) (regOfString b)
+    movOperand (OpConst (IntConst v)) (OpVar (b :-: _)) = li (fromIntegral v) (regOfString b)
+    fmovOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = mov (regOfString a) (regOfString b)
 -- helper functions
 
 -- GPR: $0 ~ $31 ($31 = 0)
 -- Float: $f0 ~ $f31
+
+{- 関数呼び出しのために引数を並べ替える (register shuffling) -}
+shuffle :: Eq a => a -> [(a, a)] -> [(a, a)]
+shuffle sw xys =
+  {- remove identical moves -}
+  let xys1 = List.filter (\ (x, y) -> x /= y) xys in
+    {- find acyclic moves -}
+    case List.partition (\ (_, y) -> List.lookup y xys /= Nothing) xys of
+      ([], []) -> []
+      ((x, y) : xys, []) -> {- no acyclic moves; resolve a cyclic move -}
+          (y, sw) : (x, y) :
+            shuffle sw (List.map (\e -> case e of
+                                    (y', z) | y == y' -> (sw, z)
+                                    yz -> yz) xys)
+      (xys, acyc) -> acyc ++ shuffle sw xys
+
 
 regOfString :: (Eq s, IsString s, Show s) => s -> Reg
 regOfString s = case List.elemIndex s [fromString $ "$" ++ show i | i <- [0..31 :: Int]] of
