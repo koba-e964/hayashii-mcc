@@ -13,12 +13,14 @@ data RegImm =
 
 instance Show Reg where
   show (Reg i) = "$" ++ show i
+instance Show FReg where
+  show (FReg i) = "$f" ++ show i
 instance Show RegImm where
   show e = case e of
     RIReg i -> "$" ++ show i
     RIImm i -> show i
 
-data Fop = FOpAdd | FOpSub | FOpMul | FOpDiv deriving (Eq, Show)
+data FOp = FOpAdd | FOpSub | FOpMul | FOpDiv deriving (Eq, Show)
 type Disp16 = Int
 type Label = String
 data Cond = EQ | NE | GE | LE deriving (Eq)
@@ -49,9 +51,20 @@ data ZekInst
   | Jmp !Reg !Reg
   | Jsr !Reg !Reg
   | Ret !Reg !Reg
+  | FBC !Cond !FReg !Label
   | Addl !Reg !RegImm !Reg
   | Subl !Reg !RegImm !Reg
   | Cmp !Cmp !Reg !RegImm !Reg
+  | And  !Reg !RegImm !Reg
+  | Sll  !Reg !RegImm !Reg
+  | Srl  !Reg !RegImm !Reg
+  | Lds !FReg !Disp16 !Reg
+  | Sts !FReg !Disp16 !Reg
+  | Cmps !Cmp !FReg !FReg !FReg
+  | FOp !FOp !FReg !FReg !FReg
+  | Invs !FReg !FReg
+  | Sqrts !FReg !FReg
+  | Itofs !FReg !FReg
   | Label !Label
   | Comment !String
   | ExtFile !FilePath
