@@ -16,10 +16,11 @@ data RegEnv = RegEnv { regmap :: !(Map.Map String Loc), gregs :: !Word32, fregs 
 emptyEnv :: RegEnv
 emptyEnv = RegEnv Map.empty 0 0 0
 type M = State RegEnv
-data Loc = Reg !Int | Stack !Int deriving (Eq)
+data Loc = Reg !Int | FReg !Int | Stack !Int deriving (Eq)
 
 instance Show Loc where
   show (Reg v) = '$' : show v
+  show (FReg v) = "$f" ++ show v
   show (Stack i) = "st" ++ show i
 
 regAlloc :: [SSAFundef] -> [SSAFundef]
@@ -31,7 +32,7 @@ regAlloc = map regAllocFundef where
 rab (SSAFundef nty params formFV blks) = do
   let vars = concatMap varsBlock blks
   forM_ params $ \(vid :-: ty) ->
-    newReg vid {- TODO ignoring type, should allocate fixed register -}
+    newReg (vid, ty) {- TODO ignoring type, should allocate fixed register -}
   mapM_ newReg vars {- TODO ignoring instructions -}
   newBlks <- mapM replace blks
   newParams <- forM params $ \(vid :-: ty) -> do
@@ -39,10 +40,10 @@ rab (SSAFundef nty params formFV blks) = do
     return $! l :-: ty
   return $! SSAFundef nty newParams formFV newBlks
 
-varsBlock :: Block -> [VId]
+varsBlock :: Block -> [(VId, Type)]
 varsBlock (Block blkId insts term) = concatMap f insts where
   f (Inst Nothing _) = []
-  f (Inst (Just v) _) = [v]
+  f (Inst (Just v) op) = [(v, typeOfOp op)]
 
 replace (Block blkId insts term) = Block blkId <$> mapM replaceInst insts <*> replaceTerm term
 
@@ -89,25 +90,30 @@ getLoc :: VId -> M VId
 getLoc (VId nm) = do
   x <- gets (fromJust . Map.lookup nm . regmap)
   return $! VId $! show x
-newReg :: VId -> M ()
-newReg (VId vname) = do
+newReg :: (VId, Type) -> M ()
+newReg (VId vname, ty) = do
   RegEnv rmap gr fr st <- get
-  let vac = complement gr
+  let vac = case ty of
+       TFloat -> complement fr
+       _      -> complement gr
   if vac == 0 then do
     let sst = Stack st
     modify $ \s -> s { regmap = Map.insert vname sst rmap, stack = st + 1 }
   else do
     let min = vac .&. (- vac)
     let num = popCount (min - 1)
-    let reg = Reg num
+    let reg = case ty of { TFloat -> FReg num; _ -> Reg num }
     allocReg reg (VId vname)
 allocReg :: Loc -> VId -> M ()
 allocReg reg (VId vname) = do
-  RegEnv rmap gr _ _ <- get
+  RegEnv rmap gr fr _ <- get
   case reg of
     Reg regnum ->
       let pos = 1 `shiftL` regnum in
       modify $ \s -> s { regmap = Map.insert vname reg rmap, gregs = gr .|. pos }
+    FReg regnum ->
+      let pos = 1 `shiftL` regnum in
+      modify $ \s -> s { regmap = Map.insert vname reg rmap, fregs = fr .|. pos }
     Stack _ ->
       modify $ \s -> s { regmap = Map.insert vname reg rmap }
 freeReg :: Loc -> M ()

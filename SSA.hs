@@ -296,3 +296,14 @@ getType (OpConst c) = case c of
   FloatConst _ -> TFloat
   UnitConst -> TUnit
 
+typeOfOp :: Op -> Type
+typeOfOp e = case e of
+  SId o -> getType o
+  SArithBin {} -> TInt
+  SFloatBin {} -> TFloat
+  SCmpBin _ o1 _ -> getType o1
+  SNeg {} -> TInt
+  SFNeg {} -> TFloat
+  SCall (_ :-: TFun _ retTy) _ -> retTy
+  SPhi ((_, o) : _) -> getType o
+  _ -> error $ "not a valid Op: " ++ show e

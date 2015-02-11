@@ -10,14 +10,6 @@ import Inst
 import SSA
 
 
-rcl = Reg 25
-rtmp2 = Reg 26
-rhp = Reg 27
-rtmp = Reg 28
-rlr = Reg 29
-rsp = Reg 30
-frtmp = FReg 30
-
 
 
 data TailInfo = Tail | NonTail !(Maybe VId)
@@ -45,10 +37,17 @@ emitSub :: TailInfo -> Op -> [ZekInst]
 emitSub Tail (SCall (LId lid :-: ty) ops) = [Br rlr lid]
 emitSub (NonTail Nothing) (SCall (LId lid :-: ty) ops) = [Bsr rlr lid]
 emitSub (NonTail Nothing) _ = [] -- if not SCall there is no side-effect.
+emitSub (NonTail (Just (VId nm))) o@(SCall (LId lid :-: ty) ops)
+  | typeOfOp o == TFloat =
+  let q = emitArgs [] ops in
+  q ++[Bsr rlr lid, fmov (FReg 0) (fregOfString nm)]
 emitSub (NonTail (Just (VId nm))) (SCall (LId lid :-: ty) ops) =
   let q = emitArgs [] ops in
   q ++[Bsr rlr lid, cp "$0" nm]
 emitSub Tail (SCall (LId lid :-: ty) ops) = [Br rtmp lid]
+emitSub (NonTail (Just (VId nm))) o@(SId (OpVar (VId src :-: ty)))
+  | typeOfOp o == TFloat =
+    [fmov (fregOfString src) (fregOfString nm)]
 emitSub (NonTail (Just (VId nm))) (SId (OpVar (VId src :-: ty))) =
     [Lda (regOfString nm) 0 (regOfString src)]
 emitSub (NonTail (Just (VId nm))) (SId (OpConst (IntConst x))) =
@@ -92,21 +91,22 @@ emitArgs x_reg_cl ops =
   let (i, yrs) = List.foldl'
         (\(i, yrs) y -> (i + 1, (y, OpVar (VId (show (Reg i)) :-: getType y)) : yrs))
         (0, map (\(x, reg_cl) -> (operandOfReg x, operandOfReg reg_cl)) x_reg_cl) ys in
-  let gprs = List.map
+  let gprs = List.concatMap
         (\ (y, r) -> movOperand y r)
         (shuffle (operandOfReg rtmp) yrs) in
   let (d, zfrs) = List.foldl'
         (\(d, zfrs) z -> (d + 1, (z, OpVar (VId (show (FReg d)) :-: getType z)) : zfrs))
         (0, []) zs in
-  let fregs = List.map
+  let fregs = List.concatMap
         (\ (z, fr) -> fmovOperand z fr)
         (shuffle (OpVar (VId (show frtmp) :-: TFloat)) zfrs) in
     gprs ++ fregs
   where
     operandOfReg x = OpVar (VId (show x) :-: TInt)
-    movOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = mov (regOfString a) (regOfString b)
-    movOperand (OpConst (IntConst v)) (OpVar (b :-: _)) = li (fromIntegral v) (regOfString b)
-    fmovOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = mov (regOfString a) (regOfString b)
+    movOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = [mov (regOfString a) (regOfString b)]
+    movOperand (OpConst (IntConst v)) (OpVar (b :-: _)) = li32 (fromIntegral v) (regOfString b)
+    fmovOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = [fmov (fregOfString a) (fregOfString b)]
+    fmovOperand (OpConst (FloatConst v)) (OpVar (b :-: _)) = lfi (realToFrac v) (fregOfString b)
 -- helper functions
 
 -- GPR: $0 ~ $31 ($31 = 0)
