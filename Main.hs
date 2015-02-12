@@ -18,6 +18,7 @@ import SSAFold
 import SSAReduce
 import SSASimpl
 import SSAElim
+import SSALiveness
 import Closure (CVardef, CFundef(..), trans)
 import RegAlloc
 import Virtual
@@ -78,6 +79,8 @@ repl str = do
       putStrLn "**** optimized SSA ****"
       let optSSA = iterate (eliminate . simplify . reduce . constFold . propagate) ssa !! 10
       print optSSA
+      mapM_ print (map analyzeLiveness optSSA)
+{-
       putStrLn "**** register-allocated SSA ****"
       let regSSA = regAlloc optSSA
       print regSSA
@@ -86,6 +89,7 @@ repl str = do
       print peSSA
       let insts = emit peSSA
       mapM_ print insts
+-}
     Left x -> error x
 
 processLib :: [String] -> IO (TypeEnv, [CVardef])
