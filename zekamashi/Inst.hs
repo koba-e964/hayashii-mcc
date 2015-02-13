@@ -64,9 +64,9 @@ data ZekInst
   | Addl !Reg !RegImm !Reg
   | Subl !Reg !RegImm !Reg
   | Cmp !Cmp !Reg !RegImm !Reg
-  | And  !Reg !RegImm !Reg
-  | Sll  !Reg !RegImm !Reg
-  | Srl  !Reg !RegImm !Reg
+  | And !Reg !RegImm !Reg
+  | Sll !Reg !RegImm !Reg
+  | Srl !Reg !RegImm !Reg
   | Lds !FReg !Disp16 !Reg
   | Sts !FReg !Disp16 !Reg
   | Cmps !Cmp !FReg !FReg !FReg
@@ -90,9 +90,13 @@ instance Show ZekInst where
     Jmp a b -> "\tJMP\t" ++ show a ++ ", (" ++ show b ++ ")"
     Jsr a b -> "\tJSR\t" ++ show a ++ ", (" ++ show b ++ ")"
     Ret a b -> "\tRET\t" ++ show a ++ ", (" ++ show b ++ ")"
+    FBC c a d -> "\tF" ++ show c ++ "\t" ++ show a ++ ", " ++ d
     Addl a b c -> "\tADDL\t" ++ show a ++ ", " ++ show b ++ ", " ++ show c
     Subl a b c -> "\tSUBL\t" ++ show a ++ ", " ++ show b ++ ", " ++ show c
     Cmp op a b c -> "\tCMP" ++ show op ++ "\t" ++ show a ++ ", " ++ show b ++ ", " ++ show c
+    And a b c -> "\tAND\t" ++ show a ++ ", " ++ show b ++ ", " ++ show c
+    Sll a b c -> "\tSLL\t" ++ show a ++ ", " ++ show b ++ ", " ++ show c
+    Srl a b c -> "\tSRL\t" ++ show a ++ ", " ++ show b ++ ", " ++ show c
     Lds a d b -> "\tLDS\t" ++ show a ++ ", " ++ show d ++ "(" ++ show b ++ ")"
     Sts a d b -> "\tSTS\t" ++ show a ++ ", " ++ show d ++ "(" ++ show b ++ ")"
     Cmps op a b c -> "\tCMPS" ++ show op ++ "\t" ++ show a ++ ", " ++ show b ++ ", " ++ show c
@@ -126,6 +130,14 @@ li32 imm dest = [Lda dest (fromIntegral imm) (Reg 31)]
 
 lfi :: Float -> FReg -> [ZekInst]
 lfi imm dest = li32 (floatToWord imm) rtmp ++ [Itofs rtmp dest]
+
+rcl :: Reg
+rtmp2 :: Reg
+rhp :: Reg
+rtmp :: Reg
+rlr :: Reg
+rsp :: Reg
+frtmp :: FReg
 
 rcl = Reg 25
 rtmp2 = Reg 26
