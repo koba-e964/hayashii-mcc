@@ -36,8 +36,8 @@ options =
   ] 
 
 parseOpt :: [String] -> (Config, [String])
-parseOpt args =
-  let (dat, nonOpts, errs) = getOpt Permute options args in
+parseOpt argv =
+  let (dat, nonOpts, errs) = getOpt Permute options argv in
   if null errs then
     (foldl (.) id dat (Config 0 1000 []), nonOpts)
   else
@@ -70,7 +70,7 @@ repl str = do
       print kn
       let al = alpha kn
       print al
-      let clos@(cexp, cfuns) = trans al
+      let (cexp, cfuns) = trans al
       putStrLn "closure transformed:"
       mapM_ print cfuns
       print cexp
@@ -100,8 +100,8 @@ processLib = undefined
 
 main :: IO ()
 main = do
-  args <- getArgs
-  let (conf, files) = parseOpt args
+  argv <- getArgs
+  let (_conf, files) = parseOpt argv
   if null files then do
     putStrLn usage
     str <- getContents
