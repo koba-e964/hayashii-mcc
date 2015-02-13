@@ -47,12 +47,15 @@ instance Show InstLive where
   show (InstLive i o) = "in=" ++ f i ++ ", out=" ++ f o where
     f liveset = show (Set.toList liveset)
 instance Show BlockLive where
-  show (BlockLive instl terml) = concatMap (\i -> show i ++ "\n") (instl ++ [terml])
+  show (BlockLive instl terml) = List.intercalate "\n" (map show $ instl ++ [terml])
 instance Show LiveInfo where
-  show (LiveInfo info) = List.intercalate "\n" (map show $ Map.toList info)
+  show (LiveInfo info) = List.intercalate "\n" (map (\i -> show i ++ "\n") $ Map.toList info)
 
+nextOfTerm :: Term -> [BlockID]
+nextOfTerm (TRet _) = []
+nextOfTerm (TBr _ blk1 blk2) = [blk1, blk2]
+nextOfTerm (TJmp blk) = [blk]
 
--- nextSets :: SSAFundef -> [(BlockID, ([Set VId], [Set VId]))] -> [(BlockID, ([Set VId], [Set VId]))]
 nextSets :: SSAFundef -> LiveInfo -> LiveInfo
 nextSets (SSAFundef _ _ _ blks) (LiveInfo info) =
   LiveInfo $ Map.fromList $ map (g info) blks where
@@ -62,7 +65,7 @@ nextSets (SSAFundef _ _ _ blks) (LiveInfo info) =
     let newIn i = (liveOut (instl !! i) `Set.difference` killInst (insts !! i)) `union` genInst (insts !! i) in
     let newOut i = liveIn ((instl ++ [terml]) !! (i + 1)) in
     let termIn = liveOut terml `union` genTerm term in
-    let termOut = Set.empty {- not correct -} in
+    let termOut = unions $ map (\blkID -> let BlockLive instl' terml' = info Map.! blkID in liveIn $ head $ instl' ++ [terml']) (nextOfTerm term) in
     (blk, BlockLive [InstLive (newIn i) (newOut i) | i <- [0 .. len - 1]] (InstLive termIn termOut))
 
 minFix :: Eq q => (q -> q) -> q -> q
@@ -70,7 +73,7 @@ minFix f init = let e = f init in
   if e == init then init else minFix f e
 
 analyzeLiveness :: SSAFundef -> LiveInfo
-analyzeLiveness fundef@(SSAFundef _ args_ _ blks) = minFix (nextSets fundef) w where
+analyzeLiveness fundef@(SSAFundef _ _ _ blks) = minFix (nextSets fundef) w where
   w = LiveInfo $ Map.fromList $ map g blks where
   g (Block blk insts term) =
     let len = length insts in
