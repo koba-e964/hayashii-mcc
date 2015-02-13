@@ -24,7 +24,7 @@ fvOp op = case op of
   SArithBin _ x y -> fvOperand x ++ fvOperand y
   SCmpBin _ x y -> fvOperand x ++ fvOperand y
   SFloatBin _ x y -> fvOperand x ++ fvOperand y
-  SCall _ args -> concatMap fvOperand args
+  SCall _ args_ -> concatMap fvOperand args_
   SPhi ls -> concatMap (fvOperand . snd) ls
 
 fvTerm :: Term -> [VId]
