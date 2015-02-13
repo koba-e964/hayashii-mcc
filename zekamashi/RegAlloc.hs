@@ -2,7 +2,6 @@
 module RegAlloc where
 
 import Control.Applicative
-import qualified Control.Arrow
 import Control.Monad.State
 import Data.Bits
 import Data.Maybe
@@ -29,6 +28,8 @@ regAlloc :: [SSAFundef] -> [SSAFundef]
 regAlloc = map regAllocFundef where
   regAllocFundef fundef = evalState (rab fundef) emptyEnv
 
+
+rab :: SSAFundef -> M SSAFundef
 rab (SSAFundef nty params formFV blks) = do
   let vars = concatMap varsBlock blks
   forM_ params $ \(vid :-: ty) ->
@@ -41,9 +42,16 @@ rab (SSAFundef nty params formFV blks) = do
   return $! SSAFundef nty newParams formFV newBlks
 
 varsBlock :: Block -> [(VId, Type)]
-varsBlock (Block blkId insts term) = concatMap f insts where
+varsBlock (Block _ insts _) = concatMap f insts where
   f (Inst Nothing _) = []
   f (Inst (Just v) op) = [(v, typeOfOp op)]
+
+
+replace :: Block -> M Block
+replaceInst :: Inst -> M Inst
+replaceOp :: Op -> M Op
+replaceOperand :: Operand -> M Operand
+replaceTerm :: Term -> M Term
 
 replace (Block blkId insts term) = Block blkId <$> mapM replaceInst insts <*> replaceTerm term
 
@@ -100,8 +108,8 @@ newReg (VId vname, ty) = do
     let sst = Stack st
     modify $ \s -> s { regmap = Map.insert vname sst rmap, stack = st + 1 }
   else do
-    let min = vac .&. (- vac)
-    let num = popCount (min - 1)
+    let minBit = vac .&. (- vac)
+    let num = popCount (minBit - 1)
     let reg = case ty of { TFloat -> FReg num; _ -> Reg num }
     allocReg reg (VId vname)
 allocReg :: Loc -> VId -> M ()
