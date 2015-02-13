@@ -37,11 +37,11 @@ alphaSub (expr :-: t) = fmap (:-: t) (case expr of
   KFNeg x -> KFNeg <$> find x
   KFloatBin op x y -> KFloatBin op <$> find x <*> find y
   KIf cmp a b e1 e2 -> KIf cmp <$> find a <*> find b <*> alphaSub e1 <*> alphaSub e2
-  KLet x@(Id n) t e1 e2 -> do
+  KLet x@(Id n) ty e1 e2 -> do
     newid <- genId n
     ae1 <- alphaSub e1
     ae2 <- local (Map.insert x newid) (alphaSub e2)
-    return $ KLet newid t ae1 ae2
+    return $ KLet newid ty ae1 ae2
   KVar x -> KVar <$> find x
   KLetRec (KFundef {name = (Id x, ty), args = yts, body = e1}) e2 -> do
     newid <- genId x
