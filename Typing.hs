@@ -134,7 +134,7 @@ preprocess (Let x _ e1 e2) = do
   Let x newty <$> preprocess e1 <*> preprocess e2
 preprocess (LetRec (Fundef { name = (x, _), args = a, body = b}) e) = do
   ty <- uniqType
-  newargs <- mapM (\(x, _) -> (,) x <$> uniqType) a
+  newargs <- mapM (\(y, _) -> (,) y <$> uniqType) a
   newb <- preprocess b
   LetRec (Fundef (x,ty) newargs newb) <$> preprocess e 
 preprocess (App e1 es) = App <$> preprocess e1 <*> mapM preprocess es
@@ -161,7 +161,7 @@ assign (Let x t e1 e2) = do
   Let x newty <$> assign e1 <*> assign e2
 assign (LetRec (Fundef { name = (x, ty), args = a, body = b}) e) = do
   newty <- assignType ty
-  newargs <- mapM (\(x, t) -> (,) x <$> assignType t) a
+  newargs <- mapM (\(y, t) -> (,) y <$> assignType t) a
   newb <- assign b
   LetRec (Fundef (x, newty) newargs newb) <$> assign e 
 assign (App e1 es) = App <$> assign e1 <*> mapM assign es
