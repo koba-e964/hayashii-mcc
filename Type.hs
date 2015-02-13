@@ -24,9 +24,9 @@ instance Show Type where
     TArray a -> parenShow a ++ " array"
     TVar s -> "'" ++ s
    where
-    parenShow ty = case ty of
-      TFun {} -> "(" ++ show ty ++ ")"
-      _       -> show ty
+    parenShow t = case t of
+      TFun {} -> "(" ++ show t ++ ")"
+      _       -> show t
 
 genType :: Type
 genType = TVar ""
