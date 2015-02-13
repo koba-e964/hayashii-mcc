@@ -1,7 +1,6 @@
-module Virtual where
+module PhiElim where
 
 import SSA
-import Inst
 
 
 

@@ -20,9 +20,11 @@ import SSASimpl
 import SSAElim
 import SSALiveness
 import Closure (CVardef, CFundef(..), trans)
+{-
 import RegAlloc
-import Virtual
+import PhiElim
 import Emit
+-}
 
 data Config = Config { threshold :: !Int, limit :: !Int, glib :: ![String] }
 
