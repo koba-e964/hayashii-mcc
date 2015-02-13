@@ -1,6 +1,5 @@
 module SSALiveness where
 
-import Data.Array.IArray
 import qualified Data.List as List
 import qualified Data.Map as Map
 import Data.Set (Set, union, unions)
@@ -57,8 +56,8 @@ nextOfTerm (TBr _ blk1 blk2) = [blk1, blk2]
 nextOfTerm (TJmp blk) = [blk]
 
 nextSets :: SSAFundef -> LiveInfo -> LiveInfo
-nextSets (SSAFundef _ _ _ blks) (LiveInfo info) =
-  LiveInfo $ Map.fromList $ map (g info) blks where
+nextSets (SSAFundef _ _ _ blks) (LiveInfo linfo) =
+  LiveInfo $ Map.fromList $ map (g linfo) blks where
   g info (Block blk insts term) =
     let (BlockLive instl terml) = info Map.! blk in
     let len = length insts in
@@ -69,13 +68,13 @@ nextSets (SSAFundef _ _ _ blks) (LiveInfo info) =
     (blk, BlockLive [InstLive (newIn i) (newOut i) | i <- [0 .. len - 1]] (InstLive termIn termOut))
 
 minFix :: Eq q => (q -> q) -> q -> q
-minFix f init = let e = f init in
-  if e == init then init else minFix f e
+minFix f initVal = let e = f initVal in
+  if e == initVal then initVal else minFix f e
 
 analyzeLiveness :: SSAFundef -> LiveInfo
 analyzeLiveness fundef@(SSAFundef _ _ _ blks) = minFix (nextSets fundef) w where
   w = LiveInfo $ Map.fromList $ map g blks where
-  g (Block blk insts term) =
+  g (Block blk insts _) =
     let len = length insts in
     let emp = InstLive Set.empty Set.empty in
     let instl = replicate len emp in
