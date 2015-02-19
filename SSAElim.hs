@@ -14,7 +14,7 @@ elimDest fundef@(SSAFundef {blocks = blks} ) =
 
 
 fvBlock :: Block -> [VId]
-fvBlock (Block _blkId insts term) = concatMap (\(Inst _ op) -> fvOp op) insts ++ fvTerm term
+fvBlock (Block _blkId (Phi ls _) insts term) = ls ++ concatMap (\(Inst _ op) -> fvOp op) insts ++ fvTerm term
 
 fvOp :: Op -> [VId]
 fvOp op = case op of
@@ -38,7 +38,7 @@ fvOperand _ = []
 
 
 removeDest :: [VId] -> Block -> Block
-removeDest app (Block blkId insts term) = Block blkId (map f insts) term
+removeDest app (Block blkId phi insts term) = Block blkId phi (map f insts) term
   where
     f (Inst (Just vid) op) | vid `notElem` app = Inst Nothing op
     f e = e
@@ -48,7 +48,7 @@ elimUselessInstructions fundef@(SSAFundef {blocks = blks} ) =
   fundef { blocks = map removeUselessInstructions blks }
 
 removeUselessInstructions :: Block -> Block
-removeUselessInstructions (Block blkId insts term) = Block blkId (filter f insts) term
+removeUselessInstructions (Block blkId phi insts term) = Block blkId phi (filter f insts) term
   where
     f (Inst Nothing op) = case op of
       SId {} -> False
@@ -64,12 +64,12 @@ removeUselessInstructions (Block blkId insts term) = Block blkId (filter f insts
 elimUnreachableBlocks :: SSAFundef -> SSAFundef
 elimUnreachableBlocks fundef@(SSAFundef {blocks = blks} ) =
   fundef { blocks = f } where
-    cfgDest (Block _ _ term) = case term of
+    cfgDest (Block _ _ _ term) = case term of
       TRet {} -> []
       TBr _ blk1 blk2 -> [blk1, blk2]
       TJmp b -> [b]
     reachable = Set.fromList $ entryBlockName : concatMap cfgDest blks {- TODO Super-tenuki. Ideally, this should be checked by reachablity analysis from entry. -}
-    f = filter (\(Block blkID _ _) -> Set.member blkID reachable) blks
+    f = filter (\(Block blkID _ _ _) -> Set.member blkID reachable) blks
 
 
 

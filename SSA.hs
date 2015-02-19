@@ -41,16 +41,20 @@ instance Show SSAFundef where
 entryBlockName :: BlockID
 entryBlockName = "entry"
 
-data Block = Block !BlockID ![Inst] !Term
+data Block = Block !BlockID !Phi ![Inst] !Term
   deriving (Eq)
 
 instance Show Block where
-  show (Block bid insts term) = 
+  show (Block bid phi insts term) = 
     bid ++ ":\n" ++
     concatMap (\x -> "  " ++ show x ++ "\n") insts ++
     "  " ++ show term ++ "\n"
 
 type BlockID = String
+
+data Phi = Phi { phivars :: ![VId],  columns :: !(Map BlockID [Operand]) }
+  deriving (Eq)
+
 
 data Inst = Inst !(Maybe VId) !Op
   deriving (Eq)
@@ -238,22 +242,30 @@ arrayGet aryOp idxOp = do
     [aryOp, idxOp]
   return (OpVar (fresh :-: elemTy))
 
+emptyPhi :: Phi
+emptyPhi = Phi [] Map.empty
+
 emptyState :: [Typed VId] -> CgenState
-emptyState vids = CgenState 0 entryBlockName (Map.fromList [(entryBlockName, Block entryBlockName [] (TRet (OpConst UnitConst)))])
+emptyState vids = CgenState 0 entryBlockName (Map.fromList [(entryBlockName, Block entryBlockName (Phi [] Map.empty) [] (TRet (OpConst UnitConst)))])
   (Map.fromList $ map (\(x :-: t) -> (x, t)) vids)
 
+setPhi :: MonadState CgenState m => [VId] -> Map BlockID [Operand] -> m ()
+setPhi vs ops = do
+  nm <- gets current
+  Block blkId _phi insts term <- gets (fromJust . Map.lookup nm . accBlocks)
+  modify (\s -> s { accBlocks = Map.insert nm (Block blkId (Phi vs ops) insts term) (accBlocks s) })
 addInst :: MonadState CgenState m => Inst -> m ()
 addInst inst = do
   nm <- gets current
-  Block blkId insts term <- gets (fromJust . Map.lookup nm . accBlocks)
-  modify (\s -> s { accBlocks = Map.insert nm (Block blkId (insts ++ [inst]) term) (accBlocks s) })
+  Block blkId phi insts term <- gets (fromJust . Map.lookup nm . accBlocks)
+  modify (\s -> s { accBlocks = Map.insert nm (Block blkId phi (insts ++ [inst]) term) (accBlocks s) })
 
 
 addTerm :: Term -> StateT CgenState M ()
 addTerm term = do
   nm <- gets current
-  Block blkId insts _ <- gets (fromJust . Map.lookup nm . accBlocks)
-  modify (\s -> s { accBlocks = Map.insert nm (Block blkId insts term) (accBlocks s) })
+  Block blkId phi insts _ <- gets (fromJust . Map.lookup nm . accBlocks)
+  modify (\s -> s { accBlocks = Map.insert nm (Block blkId phi insts term) (accBlocks s) })
 
 freshVar :: Type -> StateT CgenState M VId
 freshVar ty = do
@@ -272,7 +284,7 @@ newBlock :: String -> StateT CgenState M BlockID
 newBlock str = do
   idx <- gets blockIdx
   let newBlockName = str ++ "." ++ show idx
-  let newBlk = Block newBlockName [] (TRet (OpConst UnitConst))
+  let newBlk = Block newBlockName emptyPhi [] (TRet (OpConst UnitConst))
   modify $ \s -> s { blockIdx = idx + 1, accBlocks = Map.insert newBlockName newBlk (accBlocks s)　}
   return newBlockName
 

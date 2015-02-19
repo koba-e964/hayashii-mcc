@@ -58,7 +58,7 @@ nextOfTerm (TJmp blk) = [blk]
 nextSets :: SSAFundef -> LiveInfo -> LiveInfo
 nextSets (SSAFundef _ _ _ blks) (LiveInfo linfo) =
   LiveInfo $ Map.fromList $ map (g linfo) blks where
-  g info (Block blk insts term) =
+  g info (Block blk phi insts term) =
     let (BlockLive instl terml) = info Map.! blk in
     let len = length insts in
     let newIn i = (liveOut (instl !! i) `Set.difference` killInst (insts !! i)) `union` genInst (insts !! i) in
@@ -74,7 +74,7 @@ minFix f initVal = let e = f initVal in
 analyzeLiveness :: SSAFundef -> LiveInfo
 analyzeLiveness fundef@(SSAFundef _ _ _ blks) = minFix (nextSets fundef) w where
   w = LiveInfo $ Map.fromList $ map g blks where
-  g (Block blk insts _) =
+  g (Block blk phi insts _) =
     let len = length insts in
     let emp = InstLive Set.empty Set.empty in
     let instl = replicate len emp in

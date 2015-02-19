@@ -20,10 +20,10 @@ constPropBlock :: Block -> Block
 constPropBlock blk = evalState (cpb blk) Map.empty
 
 cpb :: (MonadState ConstEnv m) => Block -> m Block
-cpb (Block blkId insts term) = do
+cpb (Block blkId phi insts term) = do
   newInsts <- mapM propInst insts
   newTerm <- propTerm term
-  return $ Block blkId newInsts newTerm
+  return $ Block blkId phi newInsts newTerm
 
 propInst :: (MonadState ConstEnv m) => Inst -> m Inst
 propInst (Inst dest op) = do

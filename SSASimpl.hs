@@ -21,7 +21,7 @@ simplFundef fundef@(SSAFundef {blocks = blks} ) =
 
 simplBlocks :: [Block] -> [Block]
 simplBlocks blks = map (replace env) blks where
-  ok (Block blkID insts term) =
+  ok (Block blkID phi insts term) =
     if length insts >= 2 then Nothing else
       case term of
         TRet {} -> Just (blkID, (insts, term))
@@ -31,7 +31,7 @@ simplBlocks blks = map (replace env) blks where
 
 
 append :: Snippet -> Block -> Block
-append (inst, term) (Block blkId insts _) = Block blkId (insts ++ renamedInst) renamedTerm where
+append (inst, term) (Block blkId phi insts _) = Block blkId phi (insts ++ renamedInst) renamedTerm where
   f (Inst d _, i) = case d of
     Just (VId dd) -> [(VId dd, VId (dd ++ "." ++ blkId ++ "." ++ show i))]
     Nothing -> []
@@ -81,7 +81,7 @@ replaceTerm env term = case term of
 
 
 replace :: BlockEnv -> Block -> Block
-replace env blk@(Block blkId _insts term) =
+replace env blk@(Block blkId phi _insts term) =
   case term of
     TJmp dest | blkId /= dest {- to avoid recursion -} && Map.member dest env ->
       append (env Map.! dest) blk

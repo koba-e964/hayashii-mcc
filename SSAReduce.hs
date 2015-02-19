@@ -6,10 +6,10 @@ import Syntax
 reduceFundef :: SSAFundef -> SSAFundef
 reduceFundef fundef@(SSAFundef {blocks = blks} ) =
   fundef { blocks = map (reduceBlock (map blkID blks)) blks }
-  where blkID (Block x _ _) = x
+  where blkID (Block x _ _ _) = x
 
 reduceBlock :: [BlockID] -> Block -> Block
-reduceBlock blkIDs (Block blkId insts term) = Block blkId (map g insts) (h term)
+reduceBlock blkIDs (Block blkId phi insts term) = Block blkId phi (map g insts) (h term)
   where
     g (Inst dest op) = Inst dest $ case op of
       SArithBin Add x (OpConst (IntConst 0)) -> SId x
