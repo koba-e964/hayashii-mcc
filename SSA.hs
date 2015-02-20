@@ -328,3 +328,7 @@ mapEndoBlocks :: ([Block] -> [Block]) -> SSAFundef -> SSAFundef
 mapEndoBlocks f fundef@(SSAFundef {blocks = blks} ) =
   fundef { blocks = f blks }
 
+minFix :: Eq q => (q -> q) -> q -> q
+minFix f initVal = let e = f initVal in
+  if e == initVal then initVal else minFix f e
+

@@ -67,10 +67,6 @@ nextSets (SSAFundef _ _ _ blks) (LiveInfo linfo) =
     let termOut = unions $ map (\blkID -> let BlockLive instl' terml' = info Map.! blkID in liveIn $ head $ instl' ++ [terml']) (nextOfTerm term) in
     (blk, BlockLive [InstLive (newIn i) (newOut i) | i <- [0 .. len - 1]] (InstLive termIn termOut))
 
-minFix :: Eq q => (q -> q) -> q -> q
-minFix f initVal = let e = f initVal in
-  if e == initVal then initVal else minFix f e
-
 analyzeLiveness :: SSAFundef -> LiveInfo
 analyzeLiveness fundef@(SSAFundef _ _ _ blks) = minFix (nextSets fundef) w where
   w = LiveInfo $ Map.fromList $ map g blks where

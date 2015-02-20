@@ -75,7 +75,5 @@ elimUnreachableBlocks fundef@(SSAFundef {blocks = blks} ) =
 
 {- perform dead code elimination -}
 eliminate :: [SSAFundef] -> [SSAFundef]
-eliminate = map f where
-   f e = let e' = elimUselessInstructions (elimUnreachableBlocks (elimDest e)) in
-    if e == e' then e else f e'
+eliminate = map $ minFix (elimUselessInstructions . elimUnreachableBlocks . elimDest)
 

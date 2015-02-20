@@ -66,8 +66,5 @@ prop env op = case op of
 
 {- Performs constant propagation and copy propagation. This continues until no changes happen. -}
 propagate :: [SSAFundef] -> [SSAFundef]
-propagate = map f
-  where
-   f e = let e' = propFundef e in
-    if e == e' then e else f e'
+propagate = map $ minFix propFundef
 
