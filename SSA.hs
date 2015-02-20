@@ -47,6 +47,7 @@ data Block = Block !BlockID !Phi ![Inst] !Term
 instance Show Block where
   show (Block bid phi insts term) = 
     bid ++ ":\n" ++
+    show phi ++
     concatMap (\x -> "  " ++ show x ++ "\n") insts ++
     "  " ++ show term ++ "\n"
 
@@ -54,6 +55,10 @@ type BlockID = String
 
 data Phi = Phi { phivars :: ![VId],  columns :: !(Map BlockID [Operand]) }
   deriving (Eq)
+
+instance Show Phi where
+  show (Phi _vars cols) | Map.null cols = ""
+  show (Phi vars cols) = show vars ++ " := " ++ show cols ++ "\n"
 
 
 data Inst = Inst !(Maybe VId) !Op
@@ -134,22 +139,25 @@ getOperand (expr :-: ty) = case expr of
     oty <- lookupTypeInfo x
     fresh <- freshVar TInt
     addInst $ Inst (Just fresh) $ SCmpBin operator (OpVar (x :-: oty)) (OpVar (y :-: oty))
+    curBlk  <- getBlock
     thenBlk <- newBlock "then"
     elseBlk <- newBlock "else"
     contBlk <- newBlock "cont"
     addTerm $ TBr (OpVar (fresh :-: TInt)) thenBlk elseBlk
     setBlock thenBlk
+    setPhi [] (Map.singleton curBlk [])
     oth <- getOperand e1
     thenEnd <- getBlock
     addTerm $ TJmp contBlk
     setBlock elseBlk
+    setPhi [] (Map.singleton curBlk [])
     oel <- getOperand e2
     elseEnd <- getBlock
     addTerm $ TJmp contBlk
     setBlock contBlk
     let retTy = getType oth
     retFresh <- freshVar retTy
-    addInst $ Inst (Just retFresh) $ SPhi [(thenEnd, oth), (elseEnd, oel)]
+    setPhi [retFresh] (Map.fromList [(thenEnd, [oth]), (elseEnd, [oel])])
     return (OpVar (retFresh :-: retTy))
   CLet vid vty e1 e2 -> do
     res <- getOperand e1

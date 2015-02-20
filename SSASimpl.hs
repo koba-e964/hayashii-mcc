@@ -10,7 +10,7 @@ import Control.Monad.Reader
 import Data.Maybe
 import qualified Data.List as List
 
-type Snippet = ([Inst], Term)
+type Snippet = (Phi, [Inst], Term)
 type BlockEnv = Map.Map BlockID Snippet
 
 type M = Reader BlockEnv
@@ -23,26 +23,21 @@ simplBlocks blks = map (replace env) blks where
   ok (Block blkID phi insts term) =
     if length insts >= 2 then Nothing else
       case term of
-        TRet {} -> Just (blkID, (insts, term))
+        TRet {} -> Just (blkID, (phi, insts, term))
         _       -> Nothing
   env = Map.fromList $ mapMaybe ok blks
 
 
 
 append :: Snippet -> Block -> Block
-append (inst, term) (Block blkId phi insts _) = Block blkId phi (insts ++ renamedInst) renamedTerm where
+append (Phi vars cols, inst, term) (Block blkId phi insts _) = Block blkId phi (insts ++ renamedPhi ++ renamedInst) renamedTerm where
   f (Inst d _, i) = case d of
     Just (VId dd) -> [(VId dd, VId (dd ++ "." ++ blkId ++ "." ++ show i))]
     Nothing -> []
-  novum = Map.fromList $ concatMap f (zip inst [(0 :: Int)..])
-  renamedInst = map (replaceInst novum . removePhi blkId) inst
+  novum = Map.fromList $ List.concatMap f (zip inst [(0 :: Int)..]) ++ List.map (\(VId x) -> (VId x,VId (x ++ "." ++ blkId))) vars
+  renamedPhi = let col = cols Map.! blkId in zipWith (\x y -> Inst (Just (novum Map.! x)) (SId y)) vars col
+  renamedInst = List.map (replaceInst novum) inst
   renamedTerm = replaceTerm novum term
-
-
-removePhi :: BlockID -> Inst -> Inst
-removePhi blkId (Inst d op) = Inst d $ case op of
-  SPhi ls -> SId $ List.head $ map snd $ filter (\(x,_) -> x == blkId) ls
-  _ -> op
 
 replaceVId :: Map.Map VId VId -> VId -> VId
 replaceVId env x =
@@ -54,6 +49,8 @@ replaceOperand :: Map.Map VId VId -> Operand -> Operand
 replaceOperand _env x@(OpConst _) = x
 replaceOperand env (OpVar (v :-: t)) = OpVar (replaceVId env v :-: t)
 
+replacePhi :: Map.Map VId VId -> Phi -> Phi
+replacePhi env (Phi vars cols) = Phi vars (fmap (map (replaceOperand env)) cols)
 replaceInst :: Map.Map VId VId -> Inst -> Inst
 replaceInst env (Inst a op1) = Inst b op2 where
   b = case a of
@@ -80,7 +77,7 @@ replaceTerm env term = case term of
 
 
 replace :: BlockEnv -> Block -> Block
-replace env blk@(Block blkId phi _insts term) =
+replace env blk@(Block blkId _phi _insts term) =
   case term of
     TJmp dest | blkId /= dest {- to avoid recursion -} && Map.member dest env ->
       append (env Map.! dest) blk

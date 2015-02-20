@@ -2,6 +2,7 @@ module SSAReduce where
 
 import SSA
 import Syntax
+import qualified Data.Map as Map
 
 reduceFundef :: SSAFundef -> SSAFundef
 reduceFundef fundef@(SSAFundef {blocks = blks} ) =
@@ -9,8 +10,11 @@ reduceFundef fundef@(SSAFundef {blocks = blks} ) =
   where blkID (Block x _ _ _) = x
 
 reduceBlock :: [BlockID] -> Block -> Block
-reduceBlock blkIDs (Block blkId phi insts term) = Block blkId phi (map g insts) (h term)
+reduceBlock blkIDs (Block blkId phi insts term) = Block blkId (f phi) (map g insts) (h term)
   where
+    f (Phi vars cols) =
+        let meanful = Map.filterWithKey (\x _ -> elem x blkIDs) cols in
+        Phi vars meanful 
     g (Inst dest op) = Inst dest $ case op of
       SArithBin Add x (OpConst (IntConst 0)) -> SId x
       SArithBin Sub x (OpConst (IntConst 0)) -> SId x

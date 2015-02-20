@@ -3,6 +3,7 @@ module SSAElim where
 import SSA
 import Id
 import Type
+import qualified Data.Map as Map
 
 import qualified Data.Set as Set
 
@@ -14,7 +15,10 @@ elimDest fundef@(SSAFundef {blocks = blks} ) =
 
 
 fvBlock :: Block -> [VId]
-fvBlock (Block _blkId (Phi ls _) insts term) = ls ++ concatMap (\(Inst _ op) -> fvOp op) insts ++ fvTerm term
+fvBlock (Block _blkId phi insts term) = fvPhi phi ++ concatMap (\(Inst _ op) -> fvOp op) insts ++ fvTerm term
+
+fvPhi :: Phi -> [VId]
+fvPhi (Phi _ cols) = concatMap fvOperand $ concat (Map.elems cols)
 
 fvOp :: Op -> [VId]
 fvOp op = case op of

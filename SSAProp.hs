@@ -24,6 +24,12 @@ cpb (Block blkId phi insts term) = do
   newTerm <- propTerm term
   return $ Block blkId phi newInsts newTerm
 
+propPhi :: (MonadState ConstEnv m) => Phi -> m Phi
+propPhi (Phi vars cols) = do
+  env <- get
+  return $ Phi vars $ fmap (map $ prop env) cols
+
+
 propInst :: (MonadState ConstEnv m) => Inst -> m Inst
 propInst (Inst dest op) = do
   env <- get
