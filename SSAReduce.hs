@@ -5,7 +5,7 @@ import Syntax
 
 reduceFundef :: SSAFundef -> SSAFundef
 reduceFundef fundef@(SSAFundef {blocks = blks} ) =
-  fundef { blocks = map (reduceBlock (map blkID blks)) blks }
+  mapEndoBlock (reduceBlock (map blkID blks)) fundef
   where blkID (Block x _ _ _) = x
 
 reduceBlock :: [BlockID] -> Block -> Block

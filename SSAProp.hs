@@ -13,8 +13,7 @@ type ConstEnv = Map VId Operand
 
 
 propFundef :: SSAFundef -> SSAFundef
-propFundef (SSAFundef nty params formFV blks) =
-  SSAFundef nty params formFV (map constPropBlock blks)
+propFundef = mapEndoBlock constPropBlock
 
 constPropBlock :: Block -> Block
 constPropBlock blk = evalState (cpb blk) Map.empty

@@ -8,8 +8,7 @@ constFold = map cfFundef
 
 
 cfFundef :: SSAFundef -> SSAFundef
-cfFundef fundef@(SSAFundef { blocks = blk }) = 
-  fundef { blocks = map f blk }
+cfFundef = mapEndoBlock f
   where
     f (Block blkId phi insts term) = Block blkId phi (map g insts) term
     g (Inst dest op) = Inst dest $ case op of

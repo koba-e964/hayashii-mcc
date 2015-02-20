@@ -10,7 +10,7 @@ import qualified Data.Set as Set
 elimDest :: SSAFundef -> SSAFundef
 elimDest fundef@(SSAFundef {blocks = blks} ) =
   let appearance = concatMap fvBlock blks in
-  fundef { blocks = map (removeDest appearance) blks }
+  mapEndoBlock (removeDest appearance) fundef
 
 
 fvBlock :: Block -> [VId]
@@ -44,8 +44,7 @@ removeDest app (Block blkId phi insts term) = Block blkId phi (map f insts) term
     f e = e
 
 elimUselessInstructions :: SSAFundef -> SSAFundef
-elimUselessInstructions fundef@(SSAFundef {blocks = blks} ) =
-  fundef { blocks = map removeUselessInstructions blks }
+elimUselessInstructions =  mapEndoBlock removeUselessInstructions
 
 removeUselessInstructions :: Block -> Block
 removeUselessInstructions (Block blkId phi insts term) = Block blkId phi (filter f insts) term

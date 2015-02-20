@@ -299,7 +299,7 @@ getBlock = gets current
 getBlocks :: CgenState -> [Block]
 getBlocks st = map snd (Map.toList (accBlocks st))
 
-
+-- Utility functions
 
 getType :: Operand -> Type
 getType (OpVar (_ :-: ty)) = ty
@@ -319,3 +319,12 @@ typeOfOp e = case e of
   SCall (_ :-: TFun _ retTy) _ -> retTy
   SPhi ((_, o) : _) -> getType o
   _ -> error $ "not a valid Op: " ++ show e
+
+mapEndoBlock :: (Block -> Block) -> SSAFundef -> SSAFundef
+mapEndoBlock f fundef@(SSAFundef {blocks = blks} ) =
+  fundef { blocks = map f blks }
+
+mapEndoBlocks :: ([Block] -> [Block]) -> SSAFundef -> SSAFundef
+mapEndoBlocks f fundef@(SSAFundef {blocks = blks} ) =
+  fundef { blocks = f blks }
+

@@ -16,8 +16,7 @@ type BlockEnv = Map.Map BlockID Snippet
 type M = Reader BlockEnv
 
 simplFundef :: SSAFundef -> SSAFundef
-simplFundef fundef@(SSAFundef {blocks = blks} ) =
-  fundef { blocks = simplBlocks blks }
+simplFundef = mapEndoBlocks simplBlocks
 
 simplBlocks :: [Block] -> [Block]
 simplBlocks blks = map (replace env) blks where
