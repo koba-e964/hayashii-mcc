@@ -53,7 +53,7 @@ ARRAY_CREATE {ARRAY_CREATE}
 ";" {SEMICOLON}
 "(" {LPAREN}
 ")" {RPAREN}
-
+"_" {PLACEHOLDER}
 %right prec_let
 %right ";"
 %right prec_if
@@ -164,11 +164,14 @@ fundef:
     { Fundef { name = addType $1, args = $2, body = $4 } }
 ;
 formal_args:
-  ID formal_args
-    { addType $1 : $2 }
-| ID
-    { [addType $1] }
+  formal_arg formal_args
+    { $1 : $2 }
+| formal_arg
+    { [$1] }
 ;
+formal_arg:
+  ID { addType $1 }
+| "_" { (Id "", TUnit) }
 actual_args:
   actual_args simple_exp
     %prec prec_app

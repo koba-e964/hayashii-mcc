@@ -61,6 +61,7 @@ extenv = Map.fromList
   ,(Id "int_of_float", TFun [TFloat] TInt)
   ,(Id "truncate", TFun [TFloat] TInt)
   ,(Id "float_of_int", TFun [TInt] TFloat)
+  ,(Id "print_newline", TFun [TUnit] TUnit)
   ]
 
 repl :: String -> IO ()
