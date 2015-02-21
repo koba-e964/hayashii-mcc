@@ -6,4 +6,4 @@ MParser.hs
 .cabal-sandbox/
 cabal.sandbox.config
 dist/
-
+*.out
