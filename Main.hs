@@ -51,6 +51,16 @@ usage = "MinCaml on Haskell\n"
 extenv :: TypeEnv
 extenv = Map.fromList
   [(Id "print_int", TFun [TInt] TUnit)
+  ,(Id "create_array", TFun [TInt] (TArray TInt))
+  ,(Id "create_float_array", TFun [TInt] (TArray TFloat))
+  ,(Id "sin", TFun [TFloat] TFloat)
+  ,(Id "cos", TFun [TFloat] TFloat)
+  ,(Id "atan", TFun [TFloat] TFloat)
+  ,(Id "sqrt", TFun [TFloat] TFloat)
+  ,(Id "abs_float", TFun [TFloat] TFloat)
+  ,(Id "int_of_float", TFun [TFloat] TInt)
+  ,(Id "truncate", TFun [TFloat] TInt)
+  ,(Id "float_of_int", TFun [TInt] TFloat)
   ]
 
 repl :: String -> IO ()
