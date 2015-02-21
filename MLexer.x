@@ -14,7 +14,7 @@ $digit = 0-9			-- digits
 $alpha = [a-zA-Z]		-- alphabetic characters
 $lower = a-z
 $upper = A-Z
-$unknown = [\x00-\x10ffff] # $space # $digit # $alpha # [\(\*\)\+\-\/\=\<\>\,\_\;]
+$unknown = [\x00-\x10ffff] # $space # $digit # $alpha # [\(\*\)\+\-\/\=\<\>\,\_\;\.]
 
 tokens :-
   $space+;
@@ -54,6 +54,7 @@ tokens :-
   "<-"   { \_ -> LESS_MINUS }
   ";"   { \_ -> SEMICOLON }
   $lower ($digit|$lower|$upper|\_)* { \x -> ID (Id x) }
+  $upper ($digit|$lower|$upper|\_)* { \x -> ID (Id x) }
   $unknown+  { UNKNOWN }
 
 {
