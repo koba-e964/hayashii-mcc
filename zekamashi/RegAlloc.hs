@@ -39,14 +39,15 @@ rab fundef@(SSAFundef nty params formFV blks) = do
   let infGr = accLiveInfo (analyzeLiveness fundef)
   traceShow infGr $ return ()
   let coloring = tryColoring infGr 24
+  let regGet vid regmap = case Map.lookup vid regmap of { Nothing -> Reg 31; Just k -> Reg k; }
   case coloring of
     Nothing -> fail "Failed to allocate register (spilling is not yet supported)."
     Just regmap -> do
       let vars = concatMap RegAlloc.varsBlock blks
       forM_ params $ \(vid :-: ty) ->
-        allocReg (Reg (regmap Map.! vid)) vid {- TODO This code assumes that all variables are of the same type (int) -}
+        allocReg (regGet vid regmap) vid {- TODO This code assumes that all variables are of the same type (int) -}
       forM_ vars $ \(vid, ty) ->
-        allocReg (Reg (regmap Map.! vid)) vid
+        allocReg (regGet vid regmap) vid
       newBlks <- mapM replace blks
       newParams <- forM params $ \(vid :-: ty) -> do
         l <- getLoc vid
@@ -54,10 +55,10 @@ rab fundef@(SSAFundef nty params formFV blks) = do
       return $! SSAFundef nty newParams formFV newBlks
 
 varsBlock :: Block -> [(VId, Type)]
-varsBlock (Block _ _ insts _) = concatMap f insts where
+varsBlock (Block _ (Phi vars cols) insts _) = g ++ concatMap f insts where
   f (Inst Nothing _) = []
   f (Inst (Just v) op) = [(v, typeOfOp op)]
-
+  g = [ (vars !! i, getType ((cols Map.! head (Map.keys cols)) !! i)) | i <- [0 .. length vars - 1]]
 
 replace :: Block -> M Block
 replaceInst :: Inst -> M Inst
