@@ -10,6 +10,10 @@ import qualified Data.Map as Map
 import SSA hiding (M)
 import Id
 import Type
+import SSALiveness
+
+import Debug.Trace
+
 
 data RegEnv = RegEnv { regmap :: !(Map.Map String Loc), gregs :: !Word32, fregs :: !Word32, stack :: !Int }
 emptyEnv :: RegEnv
@@ -30,8 +34,10 @@ regAlloc = map regAllocFundef where
 
 
 rab :: SSAFundef -> M SSAFundef
-rab (SSAFundef nty params formFV blks) = do
-  let vars = concatMap varsBlock blks
+rab fundef@(SSAFundef nty params formFV blks) = do
+  let infGr = accLiveInfo (analyzeLiveness fundef)
+  traceShow infGr $ return ()
+  let vars = concatMap RegAlloc.varsBlock blks
   forM_ params $ \(vid :-: ty) ->
     newReg (vid, ty) {- TODO ignoring type, should allocate fixed register -}
   mapM_ newReg vars {- TODO ignoring instructions -}
@@ -42,7 +48,7 @@ rab (SSAFundef nty params formFV blks) = do
   return $! SSAFundef nty newParams formFV newBlks
 
 varsBlock :: Block -> [(VId, Type)]
-varsBlock (Block _ insts _) = concatMap f insts where
+varsBlock (Block _ _ insts _) = concatMap f insts where
   f (Inst Nothing _) = []
   f (Inst (Just v) op) = [(v, typeOfOp op)]
 
@@ -53,7 +59,7 @@ replaceOp :: Op -> M Op
 replaceOperand :: Operand -> M Operand
 replaceTerm :: Term -> M Term
 
-replace (Block blkId insts term) = Block blkId <$> mapM replaceInst insts <*> replaceTerm term
+replace (Block blkId phi insts term) = Block blkId <$> return phi <*> mapM replaceInst insts <*> replaceTerm term
 
 replaceInst (Inst mvid op) = do
   newMvid <- case mvid of

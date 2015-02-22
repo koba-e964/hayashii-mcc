@@ -341,9 +341,9 @@ minFix f initVal = let e = f initVal in
   if e == initVal then initVal else minFix f e
 
 varsFundef :: SSAFundef -> [VId]
-varsFundef (SSAFundef { blocks = blks }) = List.concatMap f blks
-  where
-   f (Block _ (Phi vars _) insts _term) = vars ++ List.concatMap varInst insts
+varsFundef (SSAFundef { blocks = blks }) = List.concatMap varsBlock blks
+varsBlock :: Block -> [VId]
+varsBlock (Block _ (Phi vars _) insts _term) = vars ++ List.concatMap varInst insts
 
 varInst :: Inst -> [VId]
 varInst (Inst x _) = maybeToList x

@@ -20,9 +20,11 @@ import SSAReduce
 import SSASimpl
 import SSAElim
 import SSALiveness
+import Interfere
 import Closure (CVardef, CFundef(..), trans)
-{-
 import RegAlloc
+
+{-
 import PhiElim
 import Emit
 -}
@@ -98,11 +100,14 @@ repl str = do
         putStrLn $ "liveness of " ++ x ++ ":"
         print liveness
         putStrLn $ "int-graph of " ++ x ++ ":"
-        print (accLiveInfo liveness)
-{-
+        let intf = accLiveInfo liveness
+        print intf
+        putStrLn $ "coloring of " ++ x ++ ":"
+        print (tryColoring intf 5)
       putStrLn "**** register-allocated SSA ****"
       let regSSA = regAlloc optSSA
       print regSSA
+{-
       putStrLn "**** Phi-eliminated SSA ****"
       let peSSA = elimPhi regSSA
       print peSSA
