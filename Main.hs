@@ -77,17 +77,9 @@ repl str = do
   case syntax of
     Right syn -> do
 　　　　　　let typed = either (error . show) id (typing extenv syn)
-      putStrLn "Typed AST:"
-      print typed
       let kn = kNormal extenv typed
-      putStrLn "k-normal form:"
-      print kn
       let al = alpha kn
-      print al
       let (cexp, cfuns) = trans al
-      putStrLn "closure transformed:"
-      mapM_ print cfuns
-      print cexp
       let ssa = runReader (runCounterT (ssaTrans cfuns cexp))
             (Map.fromList (map (\(CFundef {Closure.name = (VId n,ty)}) -> (Id n, ty)) cfuns) `Map.union` extenv)
       putStrLn "ssa:"
@@ -95,6 +87,7 @@ repl str = do
       putStrLn "**** optimized SSA ****"
       let optSSA = iterate (eliminate . simplify . reduce . constFold . propagate) ssa !! 10
       print optSSA
+{-
       forM_ optSSA $ \fundef@SSAFundef { SSA.name = LId x :-: _ } -> do
         let liveness = analyzeLiveness fundef
         putStrLn $ "liveness of " ++ x ++ ":"
@@ -104,8 +97,9 @@ repl str = do
         print intf
         putStrLn $ "coloring of " ++ x ++ ":"
         print (tryColoring intf 5)
-      putStrLn "**** register-allocated SSA ****"
+-}
       let regSSA = regAlloc optSSA
+      putStrLn "**** register-allocated SSA ****"
       print regSSA
 {-
       putStrLn "**** Phi-eliminated SSA ****"

@@ -11,13 +11,14 @@ import SSA hiding (M)
 import Id
 import Type
 import SSALiveness
+import Interfere
 
 import Debug.Trace
 
 
-data RegEnv = RegEnv { regmap :: !(Map.Map String Loc), gregs :: !Word32, fregs :: !Word32, stack :: !Int }
+data RegEnv = RegEnv { regmap :: !(Map.Map String Loc)　}
 emptyEnv :: RegEnv
-emptyEnv = RegEnv Map.empty 0 0 0
+emptyEnv = RegEnv Map.empty
 type M = State RegEnv
 data Loc = Reg !Int | FReg !Int | Stack !Int deriving (Eq)
 
@@ -37,15 +38,20 @@ rab :: SSAFundef -> M SSAFundef
 rab fundef@(SSAFundef nty params formFV blks) = do
   let infGr = accLiveInfo (analyzeLiveness fundef)
   traceShow infGr $ return ()
-  let vars = concatMap RegAlloc.varsBlock blks
-  forM_ params $ \(vid :-: ty) ->
-    newReg (vid, ty) {- TODO ignoring type, should allocate fixed register -}
-  mapM_ newReg vars {- TODO ignoring instructions -}
-  newBlks <- mapM replace blks
-  newParams <- forM params $ \(vid :-: ty) -> do
-    l <- getLoc vid
-    return $! l :-: ty
-  return $! SSAFundef nty newParams formFV newBlks
+  let coloring = tryColoring infGr 24
+  case coloring of
+    Nothing -> fail "Failed to allocate register (spilling is not yet supported)."
+    Just regmap -> do
+      let vars = concatMap RegAlloc.varsBlock blks
+      forM_ params $ \(vid :-: ty) ->
+        allocReg (Reg (regmap Map.! vid)) vid {- TODO This code assumes that all variables are of the same type (int) -}
+      forM_ vars $ \(vid, ty) ->
+        allocReg (Reg (regmap Map.! vid)) vid
+      newBlks <- mapM replace blks
+      newParams <- forM params $ \(vid :-: ty) -> do
+        l <- getLoc vid
+        return $! l :-: ty
+      return $! SSAFundef nty newParams formFV newBlks
 
 varsBlock :: Block -> [(VId, Type)]
 varsBlock (Block _ _ insts _) = concatMap f insts where
@@ -104,31 +110,8 @@ getLoc :: VId -> M VId
 getLoc (VId nm) = do
   x <- gets (fromJust . Map.lookup nm . regmap)
   return $! VId $! show x
-newReg :: (VId, Type) -> M ()
-newReg (VId vname, ty) = do
-  RegEnv rmap gr fr st <- get
-  let vac = case ty of
-       TFloat -> complement fr
-       _      -> complement gr
-  if vac == 0 then do
-    let sst = Stack st
-    modify $ \s -> s { regmap = Map.insert vname sst rmap, stack = st + 1 }
-  else do
-    let minBit = vac .&. (- vac)
-    let num = popCount (minBit - 1)
-    let reg = case ty of { TFloat -> FReg num; _ -> Reg num }
-    allocReg reg (VId vname)
 allocReg :: Loc -> VId -> M ()
 allocReg reg (VId vname) = do
-  RegEnv rmap gr fr _ <- get
-  case reg of
-    Reg regnum ->
-      let pos = 1 `shiftL` regnum in
-      modify $ \s -> s { regmap = Map.insert vname reg rmap, gregs = gr .|. pos }
-    FReg regnum ->
-      let pos = 1 `shiftL` regnum in
-      modify $ \s -> s { regmap = Map.insert vname reg rmap, fregs = fr .|. pos }
-    Stack _ ->
-      modify $ \s -> s { regmap = Map.insert vname reg rmap }
-freeReg :: Loc -> M ()
-freeReg _v = undefined
+  RegEnv rmap <- get
+　　modify $ \s -> s { regmap = Map.insert vname reg rmap　}
+
