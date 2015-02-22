@@ -19,7 +19,7 @@ import Data.Int (Int32)
 import qualified Data.List as List
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromJust, fromMaybe, maybeToList)
 
 
 type M = CounterT (Reader TypeEnv)
@@ -339,4 +339,12 @@ mapEndoBlocks f fundef@(SSAFundef {blocks = blks} ) =
 minFix :: Eq q => (q -> q) -> q -> q
 minFix f initVal = let e = f initVal in
   if e == initVal then initVal else minFix f e
+
+varsFundef :: SSAFundef -> [VId]
+varsFundef (SSAFundef { blocks = blks }) = List.concatMap f blks
+  where
+   f (Block _ (Phi vars _) insts _term) = vars ++ List.concatMap varInst insts
+
+varInst :: Inst -> [VId]
+varInst (Inst x _) = maybeToList x
 

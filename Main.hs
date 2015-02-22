@@ -1,6 +1,7 @@
 module Main where
 
 import Control.Monad.Reader (runReader)
+import Control.Monad (forM_, mapM)
 import qualified Data.Map as Map
 import System.Console.GetOpt
 import System.Environment
@@ -92,7 +93,12 @@ repl str = do
       putStrLn "**** optimized SSA ****"
       let optSSA = iterate (eliminate . simplify . reduce . constFold . propagate) ssa !! 10
       print optSSA
-      mapM_ print (map analyzeLiveness optSSA)
+      forM_ optSSA $ \fundef@SSAFundef { SSA.name = LId x :-: _ } -> do
+        let liveness = analyzeLiveness fundef
+        putStrLn $ "liveness of " ++ x ++ ":"
+        print liveness
+        putStrLn $ "int-graph of " ++ x ++ ":"
+        print (accLiveInfo liveness)
 {-
       putStrLn "**** register-allocated SSA ****"
       let regSSA = regAlloc optSSA

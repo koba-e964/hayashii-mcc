@@ -88,6 +88,24 @@ analyzeLiveness fundef@(SSAFundef _ _ _ blks) = minFix (nextSets fundef) w where
     let instl = replicate len emp in
     (blk, BlockLive phil instl emp)
 
+type Interference = Map.Map VId (Set VId)
+
+emptyInterference :: Interference
+emptyInterference = Map.empty
+
+unionInt :: Interference -> Interference -> Interference
+unionInt i1 i2 = Map.unionWith Set.union i1 i2
+
+accLiveInfo :: LiveInfo -> Interference
+accLiveInfo (LiveInfo info) = Map.foldl' (\x y -> x `unionInt` accBlockLive y) emptyInterference info
+
+accBlockLive :: BlockLive -> Interference
+accBlockLive (BlockLive phil instl terml) = Map.foldl' (\x y -> x `unionInt` accInstLive y) emptyInterference phil `unionInt`
+  (List.foldl' (\x y -> x `unionInt` accInstLive y) emptyInterference instl) `unionInt` accInstLive terml
+
+accInstLive :: InstLive -> Interference
+accInstLive (InstLive i o) = f i `unionInt` f o where
+  f set = Map.fromSet (\x -> set `Set.difference` Set.singleton x) set
 
 
 
