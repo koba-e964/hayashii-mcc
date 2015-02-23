@@ -12,6 +12,7 @@ import Id
 import Type
 import SSALiveness
 import Interfere
+import SSASimpl (replaceInst) {- for replacing instructions -}
 
 import Debug.Trace
 
@@ -41,12 +42,15 @@ rab fundef@(SSAFundef nty params formFV blks) = do
   let coloring = tryColoring infGr 24
   let regGet vid regmap = case Map.lookup vid regmap of { Nothing -> Reg 31; Just k -> Reg k; }
   case coloring of
-    Nothing -> fail "Failed to allocate register (spilling is not yet supported)."
+    Nothing -> do -- fail "Failed to allocate register (spilling is not yet supported)."
+      let vars = concatMap RegAlloc.varsBlock blks
+      let newfundef = spillVar (head vars) fundef -- TODO
+      rab newfundef
     Just regmap -> do
       let vars = concatMap RegAlloc.varsBlock blks
       forM_ params $ \(vid :-: ty) ->
         allocReg (regGet vid regmap) vid {- TODO This code assumes that all variables are of the same type (int) -}
-      forM_ vars $ \(vid, ty) ->
+      forM_ vars $ \(vid :-: ty) ->
         allocReg (regGet vid regmap) vid
       newBlks <- mapM replace blks
       newParams <- forM params $ \(vid :-: ty) -> do
@@ -54,11 +58,11 @@ rab fundef@(SSAFundef nty params formFV blks) = do
         return $! l :-: ty
       return $! SSAFundef nty newParams formFV newBlks
 
-varsBlock :: Block -> [(VId, Type)]
+varsBlock :: Block -> [Typed VId]
 varsBlock (Block _ (Phi vars cols) insts _) = g ++ concatMap f insts where
   f (Inst Nothing _) = []
-  f (Inst (Just v) op) = [(v, typeOfOp op)]
-  g = [ (vars !! i, getType ((cols Map.! head (Map.keys cols)) !! i)) | i <- [0 .. length vars - 1]]
+  f (Inst (Just v) op) = [v :-: typeOfOp op]
+  g = [ (vars !! i) :-: getType ((cols Map.! head (Map.keys cols)) !! i) | i <- [0 .. length vars - 1]]
 
 replace :: Block -> M Block
 replaceInst :: Inst -> M Inst
@@ -66,7 +70,7 @@ replaceOp :: Op -> M Op
 replaceOperand :: Operand -> M Operand
 replaceTerm :: Term -> M Term
 
-replace (Block blkId phi insts term) = Block blkId <$> return phi <*> mapM replaceInst insts <*> replaceTerm term
+replace (Block blkId phi insts term) = Block blkId <$> return phi <*> mapM RegAlloc.replaceInst insts <*> replaceTerm term
 
 replaceInst (Inst mvid op) = do
   newMvid <- case mvid of
@@ -115,4 +119,33 @@ allocReg :: Loc -> VId -> M ()
 allocReg reg (VId vname) = do
   RegEnv rmap <- get
 　　modify $ \s -> s { regmap = Map.insert vname reg rmap　}
+
+spillVar :: Typed VId -> SSAFundef -> SSAFundef
+spillVar vid fundef@(SSAFundef nty params formFV blks) = 
+  trace ("spilling variable " ++ show vid ++ "...\n") $
+  if elem vid params then
+    error $ "attempt to spill parameter:" ++ show vid
+  else
+    let x = SSAFundef nty params formFV $ runCounter $ mapM (spillVarSub vid 0) blks in
+    traceShow x x
+
+spillVarSub :: Typed VId -> Int -> Block -> Counter Block
+spillVarSub vidty@(vid@(VId nm) :-: ty) loc (Block blk phi insts term) = do
+  newinsts <- fmap concat $ forM insts $ \inst@(Inst dest op) ->
+    if dest == Just vid then
+      return [inst, storeVar vidty loc]
+    else if elem vid (fvOp op) then do
+      freshId <- genVId (nm ++ "." ++ blk)
+      trace ("spilling " ++ show vid ++ "->" ++ show freshId ++ "...") $ return ()
+      return [loadVar (freshId :-: ty) loc, SSASimpl.replaceInst (Map.singleton vid freshId) inst]
+    else
+      return [inst]
+  return $ Block blk phi newinsts term
+storeVar :: Typed VId -> Int -> Inst
+storeVar (vid :-: ty) loc = Inst Nothing $ SCall (LId "@store" :-: TUnit) [OpVar (vid :-: ty), ci32 loc]
+
+loadVar :: Typed VId -> Int -> Inst
+loadVar (vid :-: ty) loc = Inst (Just vid) $ SCall (LId "@load" :-: TUnit) [ci32 loc]
+
+
 

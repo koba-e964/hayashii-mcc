@@ -29,6 +29,7 @@ instance IsString LId where
   fromString = LId
 
 type CounterT = StateT Int
+type Counter = CounterT Identity
 
 fresh :: Monad m => CounterT m Int
 fresh = do
@@ -41,6 +42,13 @@ genId str = do
   x <- get
   put (x + 1)
   return $ Id $ str ++ "." ++ show x
+
+genVId :: Monad m => String -> CounterT m VId
+genVId str = do
+  x <- get
+  put (x + 1)
+  return $ VId $ str ++ "." ++ show x
+
 
 typeToId :: Type -> String
 typeToId t = case t of

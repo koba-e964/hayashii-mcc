@@ -14,33 +14,6 @@ elimDest fundef@(SSAFundef {blocks = blks} ) =
   mapEndoBlock (removeDest appearance) fundef
 
 
-fvBlock :: Block -> [VId]
-fvBlock (Block _blkId phi insts term) = fvPhi phi ++ concatMap (\(Inst _ op) -> fvOp op) insts ++ fvTerm term
-
-fvPhi :: Phi -> [VId]
-fvPhi (Phi _ cols) = concatMap fvOperand $ concat (Map.elems cols)
-
-fvOp :: Op -> [VId]
-fvOp op = case op of
-  SId x -> fvOperand x
-  SNeg x -> fvOperand x
-  SFNeg x -> fvOperand x
-  SArithBin _ x y -> fvOperand x ++ fvOperand y
-  SCmpBin _ x y -> fvOperand x ++ fvOperand y
-  SFloatBin _ x y -> fvOperand x ++ fvOperand y
-  SCall _ args_ -> concatMap fvOperand args_
-  SPhi ls -> concatMap (fvOperand . snd) ls
-
-fvTerm :: Term -> [VId]
-fvTerm (TRet op) = fvOperand op
-fvTerm (TBr op _ _) = fvOperand op
-fvTerm (TJmp {}) = []
-
-fvOperand :: Operand -> [VId]
-fvOperand (OpVar (vid :-: _)) = [vid]
-fvOperand _ = []
-
-
 removeDest :: [VId] -> Block -> Block
 removeDest app (Block blkId phi insts term) = Block blkId phi (map f insts) term
   where
