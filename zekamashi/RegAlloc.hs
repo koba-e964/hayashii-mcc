@@ -18,9 +18,9 @@ import SSASimpl (replaceInst) {- for replacing instructions -}
 import Debug.Trace
 
 
-data RegEnv = RegEnv { regmap :: !(Map.Map String Loc)　}
+data RegEnv = RegEnv { regmap :: !(Map.Map String Loc), stackId :: Int　}
 emptyEnv :: RegEnv
-emptyEnv = RegEnv Map.empty
+emptyEnv = RegEnv Map.empty 0
 type M = State RegEnv
 data Loc = Reg !Int | FReg !Int | Stack !Int deriving (Eq)
 
@@ -39,14 +39,13 @@ regAlloc = map regAllocFundef where
 rab :: SSAFundef -> M SSAFundef
 rab fundef@(SSAFundef nty params formFV blks) = do
   let infGr = accLiveInfo (analyzeLiveness fundef)
-  traceShow infGr $ return ()
   let coloring = tryColoring infGr 24
   let regGet vid regmap = case Map.lookup vid regmap of { Nothing -> Reg 31; Just k -> Reg k; }
   case coloring of
-    Left remaining -> do -- fail "Failed to allocate register (spilling is not yet supported)."
+    Left remaining -> do
       let vars = concatMap RegAlloc.varsBlock blks
-      let spilled = head (Set.elems remaining)
-      let newfundef = spillVar (lookupTyped spilled vars) fundef -- TODO
+      let spilled = head (Set.elems remaining) -- TODO selection of spilled variable
+      newfundef <- spillVar (lookupTyped spilled vars) fundef
       rab newfundef
     Right regmap -> do
       let vars = concatMap RegAlloc.varsBlock blks
@@ -124,17 +123,18 @@ getLoc (VId nm) = do
   return $! VId $! show x
 allocReg :: Loc -> VId -> M ()
 allocReg reg (VId vname) = do
-  RegEnv rmap <- get
-　　modify $ \s -> s { regmap = Map.insert vname reg rmap　}
+  RegEnv rmap _ <- get
+　　modify $ \s -> s { regmap = Map.insert vname reg rmap }
 
-spillVar :: Typed VId -> SSAFundef -> SSAFundef
+spillVar :: Typed VId -> SSAFundef -> M SSAFundef
 spillVar vid fundef@(SSAFundef nty params formFV blks) = 
   trace ("spilling variable " ++ show vid ++ "...\n") $
   if elem vid params then
     error $ "attempt to spill parameter:" ++ show vid
-  else
-    let x = SSAFundef nty params formFV $ runCounter $ mapM (spillVarSub vid 0) blks in
-    traceShow x x
+  else do
+    fid <- freshId
+    let x = SSAFundef nty params formFV $ runCounter $ mapM (spillVarSub vid fid) blks
+    return x
 
 spillVarSub :: Typed VId -> Int -> Block -> Counter Block
 spillVarSub vidty@(vid@(VId nm) :-: ty) loc (Block blk phi insts term) = do
@@ -154,5 +154,10 @@ storeVar (vid :-: ty) loc = Inst Nothing $ SCall (LId "@store" :-: TUnit) [OpVar
 loadVar :: Typed VId -> Int -> Inst
 loadVar (vid :-: ty) loc = Inst (Just vid) $ SCall (LId "@load" :-: TUnit) [ci32 loc]
 
+freshId :: M Int
+freshId = do
+  i <- gets stackId
+  modify $ \s -> s { stackId = i + 1 }
+  return i
 
 
