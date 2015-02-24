@@ -4,7 +4,9 @@ module RegAlloc where
 import Control.Applicative
 import Control.Monad.State
 import Data.Bits
+import Data.Function (on)
 import Data.Maybe
+import qualified Data.List as List
 import qualified Data.Set as Set
 import Data.Word
 import qualified Data.Map as Map
@@ -44,7 +46,7 @@ rab fundef@(SSAFundef nty params formFV blks) = do
   case coloring of
     Left remaining -> do
       let vars = concatMap RegAlloc.varsBlock blks
-      let spilled = head (Set.elems remaining) -- TODO selection of spilled variable
+      let spilled = head $ List.sortBy (compare `on` (\x -> numUseFundef x fundef)) (Set.elems remaining) -- spills the vairable least frequently used
       newfundef <- spillVar (lookupTyped spilled vars) fundef
       rab newfundef
     Right regmap -> do
@@ -160,4 +162,13 @@ freshId = do
   modify $ \s -> s { stackId = i + 1 }
   return i
 
+numUseFundef :: VId -> SSAFundef -> Int
+numUseFundef vid (SSAFundef { blocks = blk }) = sum $ map (numUseBlock vid) blk
+
+
+-- | Rough heuristic function. This function does not count occurrence of vid in phi nodes.
+numUseBlock :: VId -> Block -> Int
+numUseBlock vid (Block _ _phi insts term) = sum (map f insts) + g term where
+  f (Inst _ op) = if elem vid (fvOp op) then 1 else 0
+  g t = if elem vid (fvTerm t) then 1 else 0
 
