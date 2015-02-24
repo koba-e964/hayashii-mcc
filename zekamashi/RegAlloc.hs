@@ -5,6 +5,7 @@ import Control.Applicative
 import Control.Monad.State
 import Data.Bits
 import Data.Maybe
+import qualified Data.Set as Set
 import Data.Word
 import qualified Data.Map as Map
 import SSA hiding (M)
@@ -42,11 +43,12 @@ rab fundef@(SSAFundef nty params formFV blks) = do
   let coloring = tryColoring infGr 24
   let regGet vid regmap = case Map.lookup vid regmap of { Nothing -> Reg 31; Just k -> Reg k; }
   case coloring of
-    Nothing -> do -- fail "Failed to allocate register (spilling is not yet supported)."
+    Left remaining -> do -- fail "Failed to allocate register (spilling is not yet supported)."
       let vars = concatMap RegAlloc.varsBlock blks
-      let newfundef = spillVar (head vars) fundef -- TODO
+      let spilled = head (Set.elems remaining)
+      let newfundef = spillVar (lookupTyped spilled vars) fundef -- TODO
       rab newfundef
-    Just regmap -> do
+    Right regmap -> do
       let vars = concatMap RegAlloc.varsBlock blks
       forM_ params $ \(vid :-: ty) ->
         allocReg (regGet vid regmap) vid {- TODO This code assumes that all variables are of the same type (int) -}
@@ -63,6 +65,11 @@ varsBlock (Block _ (Phi vars cols) insts _) = g ++ concatMap f insts where
   f (Inst Nothing _) = []
   f (Inst (Just v) op) = [v :-: typeOfOp op]
   g = [ (vars !! i) :-: getType ((cols Map.! head (Map.keys cols)) !! i) | i <- [0 .. length vars - 1]]
+
+lookupTyped :: Eq a => a -> [Typed a] -> Typed a
+lookupTyped x [] = error $ "type was not found"
+lookupTyped x ((y :-: ty) : ys) | x == y = y :-: ty
+lookupTyped x (_ : ys) = lookupTyped x ys
 
 replace :: Block -> M Block
 replaceInst :: Inst -> M Inst
