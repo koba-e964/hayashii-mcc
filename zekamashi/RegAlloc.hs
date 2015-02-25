@@ -37,21 +37,35 @@ regAlloc :: [SSAFundef] -> [SSAFundef]
 regAlloc = map regAllocFundef where
   regAllocFundef fundef = evalState (rab fundef) emptyEnv
 
+gregs :: [Loc]
+fregs :: [Loc]
+
+gregs = [ Reg i | i <- [0 .. 24] ++ [26]]
+fregs = [ FReg i | i <- [0 .. 30]]
+
+
 
 rab :: SSAFundef -> M SSAFundef
 rab fundef@(SSAFundef nty params formFV blks) = do
   let infGr = accLiveInfo (analyzeLiveness fundef)
-  let argCol = Map.fromList [(case params !! i of { u :-: _ -> u; }, i) | i <- [0 .. length params - 1]]
-  let coloring = tryColoring infGr ([0 .. 24] ++ [26]) argCol
-  let regGet vid regmap = case Map.lookup vid regmap of { Nothing -> Reg 31; Just k -> Reg k; }
+  let gcol = [0 .. length gregs - 1]
+  let fcol = [length gregs .. length gregs + length fregs - 1]
+  let argColoring xs gcol fcol = case xs of
+       [] -> []
+       x : rest -> case x of
+         v :-: TFloat -> (v, head fcol) : argColoring rest gcol (tail fcol)
+         v :-: _      -> (v, head gcol) : argColoring rest (tail gcol) fcol
+  let argCol = Map.fromList $ argColoring params gcol fcol
+  let vars = concatMap RegAlloc.varsBlock blks
+  let colset = Map.fromList [if ty /= TFloat then (i, gcol) else (i, fcol) | i :-: ty <- vars]
+  let coloring = tryColoring infGr colset argCol
+  let regGet vid regmap = case Map.lookup vid regmap of { Nothing -> Reg 31; Just k -> (gregs ++ fregs) !! k; }
   case coloring of
     Left remaining -> do
-      let vars = concatMap RegAlloc.varsBlock blks
       let spilled = head $ List.sortBy (compare `on` (\x -> numUseFundef x fundef)) (Set.elems remaining) -- spills the vairable least frequently used
       newfundef <- spillVar (lookupTyped spilled vars) fundef
       rab newfundef
     Right regmap -> do
-      let vars = concatMap RegAlloc.varsBlock blks
       forM_ params $ \(vid :-: ty) ->
         allocReg (regGet vid regmap) vid {- TODO This code assumes that all variables are of the same type (int) -}
       forM_ vars $ \(vid :-: ty) ->
@@ -152,10 +166,10 @@ spillVarSub vidty@(vid@(VId nm) :-: ty) loc (Block blk phi insts term) = do
       return [inst]
   return $ Block blk phi newinsts term
 storeVar :: Typed VId -> Int -> Inst
-storeVar (vid :-: ty) loc = Inst Nothing $ SCall (LId "@store" :-: TUnit) [OpVar (vid :-: ty), ci32 loc]
+storeVar (vid :-: ty) loc = Inst Nothing $ SCall (LId "@store" :-: TFun [ty, TInt] TUnit) [OpVar (vid :-: ty), ci32 loc]
 
 loadVar :: Typed VId -> Int -> Inst
-loadVar (vid :-: ty) loc = Inst (Just vid) $ SCall (LId "@load" :-: TUnit) [ci32 loc]
+loadVar (vid :-: ty) loc = Inst (Just vid) $ SCall (LId "@load" :-: TFun [TInt] ty) [ci32 loc]
 
 freshId :: M Int
 freshId = do
