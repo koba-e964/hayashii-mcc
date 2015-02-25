@@ -25,7 +25,7 @@ emitFundef (SSAFundef (LId nm :-: ty) params formFV blks) =
   ++ [Ret rtmp rlr]
 
 emitBlock :: Block -> [ZekInst]
-emitBlock (Block blkId insts term) = concatMap emitInst insts ++ emitTerm term
+emitBlock (Block blkId phi insts term) = concatMap emitInst insts ++ emitTerm term
 
 emitInst (Inst dest op) = emitSub (NonTail dest) op
 
@@ -73,7 +73,6 @@ emitSub Tail exp@(SCmpBin {}) = emitSub (NonTail (Just (retReg TInt))) exp
 emitSub Tail exp@(SFNeg {}) = emitSub (NonTail (Just (retReg TFloat))) exp
 emitSub Tail exp@(SFloatBin {}) = emitSub (NonTail (Just (retReg TFloat))) exp
 emitSub Tail exp@(SNeg {}) = emitSub (NonTail (Just (retReg TInt))) exp
-emitSub Tail exp@(SPhi {}) = emitSub (NonTail (Just (retReg TInt))) exp
 
 retReg :: Type -> VId
 retReg ty =

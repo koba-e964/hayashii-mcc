@@ -19,15 +19,10 @@ import SSAFold
 import SSAReduce
 import SSASimpl
 import SSAElim
-import SSALiveness
-import Interfere
 import Closure (CVardef, CFundef(..), trans)
 import RegAlloc
-
-{-
 import PhiElim
 import Emit
--}
 
 data Config = Config { threshold :: !Int, limit :: !Int, glib :: ![String] }
 
@@ -70,10 +65,7 @@ extenv = Map.fromList
 repl :: String -> IO ()
 repl str = do
   let lexed = MLexer.lex str
-  print lexed
   let syntax = parse lexed
-  putStrLn "AST:"
-  print syntax
   case syntax of
     Right syn -> do
 　　　　　　let typed = either (error . show) id (typing extenv syn)
@@ -101,13 +93,11 @@ repl str = do
       let regSSA = regAlloc optSSA
       putStrLn "**** register-allocated SSA ****"
       print regSSA
-{-
       putStrLn "**** Phi-eliminated SSA ****"
       let peSSA = elimPhi regSSA
       print peSSA
       let insts = emit peSSA
       mapM_ print insts
--}
     Left x -> error x
 
 processLib :: [String] -> IO (TypeEnv, [CVardef])
