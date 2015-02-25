@@ -41,7 +41,8 @@ regAlloc = map regAllocFundef where
 rab :: SSAFundef -> M SSAFundef
 rab fundef@(SSAFundef nty params formFV blks) = do
   let infGr = accLiveInfo (analyzeLiveness fundef)
-  let coloring = tryColoring infGr 24
+  let argCol = Map.fromList [(case params !! i of { u :-: _ -> u; }, i) | i <- [0 .. length params - 1]]
+  let coloring = tryColoring infGr 24 argCol
   let regGet vid regmap = case Map.lookup vid regmap of { Nothing -> Reg 31; Just k -> Reg k; }
   case coloring of
     Left remaining -> do

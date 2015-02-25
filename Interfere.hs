@@ -31,14 +31,16 @@ removeVertex intGr v = Map.map (Set.delete v) $ Map.delete v intGr
 neighbors :: Interference -> VId -> [VId]
 neighbors i v = Set.toList $ i Map.! v
 
--- | Trial of k-coloring using heuristics. 
+-- | Trial of k-coloring using heuristics.
 -- | If this function succeeds to color the given graph, it returns the mapping of color wrapped with Right.
 -- | Otherwise, it returns the set of variables not colored by this function, wrapped with Left.
-tryColoring :: Interference -> Int -> Either (Set.Set VId) (Map.Map VId Int)
-tryColoring intGr k = f [0 .. k - 1] intGr where
-  f cols gr | null $ vertices gr = Right Map.empty
+-- | We can specify the color of some vertices.
+tryColoring :: Interference -> Int -> Map.Map VId Int -> Either (Set.Set VId) (Map.Map VId Int)
+tryColoring intGr k precol = f [0 .. k - 1] intGr where
+  precols = Map.keys precol -- the list of colored vertices in precol
+  f _cols gr | null (vertices gr List.\\ precols) = Right precol
   f cols gr = let verts = vertices gr in
-    let mi = List.minimumBy (compare `on` degree gr) verts in
+    let mi = List.minimumBy (compare `on` degree gr) (verts List.\\ precols) in
     let induced = removeVertex gr mi in
     let res = f cols induced in
     case res of
