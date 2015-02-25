@@ -13,16 +13,17 @@ type ConstEnv = Map VId Operand
 
 
 propFundef :: SSAFundef -> SSAFundef
-propFundef = mapEndoBlock constPropBlock
+propFundef = mapEndoBlocks constPropBlock
 
-constPropBlock :: Block -> Block
-constPropBlock blk = evalState (cpb blk) Map.empty
+constPropBlock :: [Block] -> [Block]
+constPropBlock blk = evalState (mapM cpb =<< mapM cpb blk) Map.empty -- Applies twice in order to propagate constants backwards.
 
 cpb :: (MonadState ConstEnv m) => Block -> m Block
 cpb (Block blkId phi insts term) = do
+  newPhi <- propPhi phi
   newInsts <- mapM propInst insts
   newTerm <- propTerm term
-  return $ Block blkId phi newInsts newTerm
+  return $ Block blkId newPhi newInsts newTerm
 
 propPhi :: (MonadState ConstEnv m) => Phi -> m Phi
 propPhi (Phi vars cols) = do
