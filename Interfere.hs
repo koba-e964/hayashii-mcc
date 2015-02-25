@@ -35,8 +35,8 @@ neighbors i v = Set.toList $ i Map.! v
 -- | If this function succeeds to color the given graph, it returns the mapping of color wrapped with Right.
 -- | Otherwise, it returns the set of variables not colored by this function, wrapped with Left.
 -- | We can specify the color of some vertices.
-tryColoring :: Interference -> Int -> Map.Map VId Int -> Either (Set.Set VId) (Map.Map VId Int)
-tryColoring intGr k precol = f [0 .. k - 1] intGr where
+tryColoring :: Interference -> [Int] -> Map.Map VId Int -> Either (Set.Set VId) (Map.Map VId Int)
+tryColoring intGr colset precol = f colset intGr where
   precols = Map.keys precol -- the list of colored vertices in precol
   f _cols gr | null (vertices gr List.\\ precols) = Right precol
   f cols gr = let verts = vertices gr in
