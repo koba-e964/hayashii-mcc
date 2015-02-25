@@ -88,12 +88,13 @@ lookupTyped x ((y :-: ty) : ys) | x == y = y :-: ty
 lookupTyped x (_ : ys) = lookupTyped x ys
 
 replace :: Block -> M Block
+replacePhi :: Phi -> M Phi
 replaceInst :: Inst -> M Inst
 replaceOp :: Op -> M Op
 replaceOperand :: Operand -> M Operand
 replaceTerm :: Term -> M Term
 
-replace (Block blkId phi insts term) = Block blkId <$> return phi <*> mapM RegAlloc.replaceInst insts <*> replaceTerm term
+replace (Block blkId phi insts term) = Block blkId <$> replacePhi phi <*> mapM RegAlloc.replaceInst insts <*> replaceTerm term
 
 replaceInst (Inst mvid op) = do
   newMvid <- case mvid of
@@ -101,11 +102,18 @@ replaceInst (Inst mvid op) = do
     Just v -> Just <$> getLoc v
   Inst newMvid <$> replaceOp op
 
-
+replacePhi (Phi vars cols) = do
+  env <- gets regmap
+  newVars <- mapM getRegName vars
+  let keys = Map.keys cols
+  newCols <- forM keys $ \k -> do
+    x <- mapM replaceOperand (cols Map.! k)
+    return (k, x)
+  return $ Phi newVars $ Map.fromList newCols
 replaceOp op = do
   case op of
     SId c ->
-      return $ SId c
+      SId <$> replaceOperand c
     SArithBin operator x y ->
       SArithBin operator <$> replaceOperand x <*> replaceOperand y
     SCmpBin operator x y ->
@@ -121,9 +129,9 @@ replaceOp op = do
 
 replaceOperand op = case op of
   OpConst _ -> return op
-  OpVar (VId nm :-: ty) -> do
-    env <- gets regmap
-    return $ OpVar (VId (show (env Map.! nm)) :-: ty)
+  OpVar (vid :-: ty) -> do
+    regName <- getRegName vid
+    return $ OpVar (regName :-: ty)
 replaceTerm term = case term of
   TRet op -> TRet <$> replaceOperand op
   TBr op b1 b2 -> do
@@ -173,6 +181,16 @@ freshId = do
   i <- gets stackId
   modify $ \s -> s { stackId = i + 1 }
   return i
+
+getRegName :: VId -> M VId
+getRegName vid@(VId nm) = do
+  rmap <- gets regmap
+  if Map.member nm rmap then
+    return $ VId $ show $ rmap Map.! nm
+  else
+    error $ "Register for variable " ++ nm ++ " is not allocated."
+
+
 
 numUseFundef :: VId -> SSAFundef -> Int
 numUseFundef vid (SSAFundef { blocks = blk }) = sum $ map (numUseBlock vid) blk
