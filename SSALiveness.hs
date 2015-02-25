@@ -27,7 +27,6 @@ genOp e = case e of
   SNeg o -> genOperand o
   SFNeg o -> genOperand o
   SCall _ ls -> unions (map genOperand ls)
-  SPhi ls -> unions $ map (\(_, o) -> genOperand o) ls
 
 genOperand :: Operand -> Set VId
 genOperand (OpVar (v :-: _)) = Set.singleton v

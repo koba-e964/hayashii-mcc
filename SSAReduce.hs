@@ -23,10 +23,6 @@ reduceBlock blkIDs (Block blkId phi insts term) = Block blkId (f phi) (map g ins
       SArithBin Mul x (OpConst (IntConst 2)) -> SArithBin Add x x
       SArithBin Add (OpConst t) (OpVar x) -> SArithBin Add (OpVar x) (OpConst t)
       SArithBin Mul (OpConst t) (OpVar x) -> SArithBin Mul (OpVar x) (OpConst t)
-      SPhi ls ->
-        let meanful = filter (\(x, _) -> elem x blkIDs) ls in
-         if null meanful then error ("Phi node becomes null, original = " ++ show ls)
-         else SPhi meanful 
       e -> e
     h (TBr _ blk1 blk2) | blk1 == blk2 = TJmp blk1
     h (TBr (OpConst (IntConst x)) blk1 blk2) = case x of

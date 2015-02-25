@@ -118,9 +118,6 @@ replaceOp op = do
       SFloatBin operator <$> replaceOperand x <*> replaceOperand y
     SCall lid operands ->
       SCall lid <$> mapM replaceOperand operands
-    SPhi ls ->
-      let f (x, y) = do { r <- replaceOperand y; return (x, r);} in
-      SPhi <$> mapM f ls
 
 replaceOperand op = case op of
   OpConst _ -> return op

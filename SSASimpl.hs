@@ -67,7 +67,6 @@ replaceOp env op = case op of
   SNeg x -> SNeg (replaceOperand env x)
   SFNeg x -> SFNeg (replaceOperand env x)
   SCall lid argv -> SCall lid (map (replaceOperand env) argv)
-  SPhi ls -> SPhi (map (Control.Arrow.second (replaceOperand env)) ls) 
 
 replaceTerm :: Map.Map VId VId -> Term -> Term
 replaceTerm env term = case term of

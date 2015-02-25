@@ -51,8 +51,6 @@ propInst (Inst dest op) = do
       return $ SFloatBin operator (prop env x) (prop env y)
     SCall lid operands ->
       return $ SCall lid (map (prop env) operands)
-    SPhi ls ->
-      return $ SPhi $ map (Control.Arrow.second (prop env)) ls
   return $ Inst dest result
 
 propTerm :: (MonadState ConstEnv m) => Term -> m Term

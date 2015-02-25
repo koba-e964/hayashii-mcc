@@ -77,7 +77,6 @@ data Op =
   | SNeg !Operand
   | SFNeg !Operand
   | SCall !(Typed LId) ![Operand]
-  | SPhi ![(BlockID, Operand)]
   deriving (Eq, Show)
 data Term =
   TRet !Operand
@@ -325,7 +324,6 @@ typeOfOp e = case e of
   SNeg {} -> TInt
   SFNeg {} -> TFloat
   SCall (_ :-: TFun _ retTy) _ -> retTy
-  SPhi ((_, o) : _) -> getType o
   _ -> error $ "not a valid Op: " ++ show e
 
 mapEndoBlock :: (Block -> Block) -> SSAFundef -> SSAFundef
@@ -363,7 +361,6 @@ fvOp op = case op of
   SCmpBin _ x y -> fvOperand x ++ fvOperand y
   SFloatBin _ x y -> fvOperand x ++ fvOperand y
   SCall _ args_ -> concatMap fvOperand args_
-  SPhi ls -> concatMap (fvOperand . snd) ls
 
 fvTerm :: Term -> [VId]
 fvTerm (TRet op) = fvOperand op

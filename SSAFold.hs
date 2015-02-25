@@ -34,7 +34,5 @@ cfFundef = mapEndoBlock f
         SId $ OpConst $ IntConst $ case operator of
           Eq -> if x == y then 1 else 0
           LE -> if x <= y then 1 else 0
-      SPhi (x:rest) | all (\(_, y) -> y == snd x) rest ->
-        SId $ snd x
       _ -> op
 

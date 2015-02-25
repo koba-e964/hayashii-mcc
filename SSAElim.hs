@@ -33,7 +33,6 @@ removeUselessInstructions (Block blkId phi insts term) = Block blkId phi (filter
       SArithBin {} -> False
       SFloatBin {} -> False
       SCmpBin {} -> False
-      SPhi {} -> False
       _ -> True
     f _ = True
 
