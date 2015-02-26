@@ -118,10 +118,10 @@ emit_inst oc e = case e of
 emit :: Handle -> [ZekInst] -> IO ()
 emit oc code =  mapM_ (emit_inst oc) code
 
-mov :: Reg -> Reg -> ZekInst
-mov src dest = Lda dest 0 src
-fmov :: FReg -> FReg -> ZekInst
-fmov src dest = FOp FOpAdd src (FReg 31) dest
+mov :: Reg -> Reg -> [ZekInst]
+mov src dest = if src == dest then [] else [Lda dest 0 src]
+fmov :: FReg -> FReg -> [ZekInst]
+fmov src dest = if src == dest then [] else [FOp FOpAdd src (FReg 31) dest]
 li :: Disp16 -> Reg -> ZekInst
 li imm dest = Lda dest imm (Reg 31)
 
@@ -147,4 +147,6 @@ rlr = Reg 29
 rsp = Reg 30
 frtmp = FReg 30
 
+abstAdd :: Reg -> Word32 -> Reg -> [ZekInst]
+abstAdd rsrc imm rdest = [Lda rdest (fromIntegral imm) rsrc]
 
