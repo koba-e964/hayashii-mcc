@@ -4,7 +4,7 @@ module SSAProp where
 import Id
 import SSA
 import Type
-import qualified Control.Arrow
+import Control.Monad (when)
 import Control.Monad.State (MonadState, evalState, get, modify)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -52,6 +52,10 @@ propInst (Inst dest op) = do
       return $ SFloatBin operator (prop env x) (prop env y)
     SCall lid operands ->
       return $ SCall lid (map (prop env) operands)
+  when (typeOfOp op == TUnit) $ do
+    case dest of
+      Nothing -> return ()
+      Just dest' -> modify (Map.insert dest' (OpConst UnitConst))
   return $ Inst dest result
 
 propTerm :: (MonadState ConstEnv m) => Term -> m Term
