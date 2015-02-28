@@ -57,6 +57,10 @@ emitTerm (TBr (OpVar (VId src :-: ty)) blk1 blk2)
     ]
 
 emitSub :: TailInfo -> Op -> M [ZekInst]
+emitSub _ (SCall (LId "@store" :-: _) [OpVar (VId v :-: _), OpConst (IntConst i)]) =
+  return [Stl (regOfString v) (fromIntegral i) rsp] 
+emitSub (NonTail (Just (VId nm))) (SCall (LId "@load" :-: _) [OpConst (IntConst i)]) =
+  return [Ldl (regOfString nm) (fromIntegral i) rsp] 
 emitSub Tail (SCall (LId lid :-: ty) ops) = return [Br rlr lid]
 emitSub (NonTail Nothing) (SCall (LId lid :-: ty) ops) = return [Bsr rlr lid]
 emitSub (NonTail Nothing) _ = return [] -- if not SCall there is no side-effect.
@@ -82,6 +86,8 @@ emitSub (NonTail (Just (VId nm))) (SArithBin aop (OpVar (VId src :-: ty)) op2) =
         Mul -> undefined
         Div -> undefined
   in return $ [ctor (regOfString src) (regimmOfOperand op2) (regOfString nm)]
+emitSub (NonTail (Just (VId nm))) (SNeg o@(OpVar (VId src :-: ty))) =
+  return $ [Subl (Reg 31) (regimmOfOperand o) (regOfString nm)]
 emitSub (NonTail (Just (VId nm))) (SFloatBin bop (OpVar (VId src1 :-: _)) (OpVar (VId src2 :-: _))) =
   let ctor = case bop of
         FAdd -> FOpAdd
