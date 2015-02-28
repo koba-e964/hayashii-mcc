@@ -12,24 +12,26 @@ import SSA hiding (M)
 
 import qualified Data.Map as Map
 
-data Env = Env { labelMap :: !(Map.Map BlockID Label), blkIdx :: !Int } 
+data Env = Env { labelMap :: !(Map.Map BlockID Label), blkIdx :: !Int, currentFunction :: !String } 
 
 type M = State Env
 runM :: M a -> a
-runM x = evalState x (Env Map.empty 0)
+runM x = evalState x (Env Map.empty 0 "undefined><><")
 
 data TailInfo = Tail | NonTail !(Maybe VId)
 
 emit :: [SSAFundef] -> [ZekInst]
 emit fundefs = runM $ do
-  sub <- fmap concat$ mapM emitFundef fundefs
+  sub <- fmap concat $ mapM emitFundef fundefs
   return $ [Br rtmp "main"] ++ sub
 
 
 emitFundef :: SSAFundef -> M [ZekInst]
 emitFundef (SSAFundef (LId nm :-: ty) params formFV blks) = do
+  modify $ \s -> s { currentFunction = nm }
+  entryLabel <- freshLabel "entry"
   res <- fmap concat $ mapM emitBlock blks
-  return $ [Label nm] ++ res
+  return $ [Br rtmp entryLabel, Label nm] ++ res
 
 emitBlock :: Block -> M [ZekInst]
 emitBlock (Block blkId phi insts term) = do
@@ -185,12 +187,14 @@ regimmOfOperand (OpVar (VId src :-: ty)) = case regOfString src of Reg x -> RIRe
 
 freshLabel :: BlockID -> M Label
 freshLabel blkId = do
+  f <- gets currentFunction
+  let uid = f ++ "." ++ blkId
   lm <- gets labelMap
-  if Map.member blkId lm then
-    return $ lm Map.! blkId
+  if Map.member uid lm then
+    return $ lm Map.! uid
   else do
     x <- gets blkIdx
-    let str = blkId ++ "." ++ show x 
-    modify $ \s -> s { labelMap = Map.insert blkId str lm, blkIdx = x + 1 }
+    let str = uid ++ "." ++ show x 
+    modify $ \s -> s { labelMap = Map.insert uid str lm, blkIdx = x + 1 }
     return str
 
