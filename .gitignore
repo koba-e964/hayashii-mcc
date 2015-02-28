@@ -7,3 +7,4 @@ MParser.hs
 cabal.sandbox.config
 dist/
 *.out
+*.s

@@ -11,10 +11,10 @@ sample/shuffle.ml sample/spill.ml sample/spill2.ml sample/spill3.ml sample/sum-t
 #sample/funcomp.ml
 #sample/cls-bug.ml sample/cls-bug2.ml sample/cls-rec.ml \
 #sample/matmul.ml 
-test_all : $(SAMPLES:%.ml=%.out)
+test_all : $(SAMPLES:%.ml=%.s)
 
-%.out : %.ml
-	LANG=C.UTF-8 cabal run <$*.ml >$*.out
+%.s : %.ml
+	LANG=C.UTF-8 cabal run -- -o $*.s <$*.ml >$*.out
 clean : 
-	rm -f sample/*.out
+	rm -f sample/*.out sample/*.s
 

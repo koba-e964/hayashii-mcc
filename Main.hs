@@ -5,6 +5,7 @@ import Control.Monad (forM_, mapM)
 import qualified Data.Map as Map
 import System.Console.GetOpt
 import System.Environment
+import System.IO
 
 import qualified MLexer
 import Id
@@ -23,21 +24,23 @@ import Closure (CVardef, CFundef(..), trans)
 import RegAlloc
 import PhiElim
 import Emit
+import qualified Inst
 
-data Config = Config { threshold :: !Int, limit :: !Int, glib :: ![String] }
+data Config = Config { threshold :: !Int, limit :: !Int, glib :: ![String], outFile :: !(Maybe String) }
 
 options :: [OptDescr (Config -> Config)]
 options =
   [ Option [] ["inline"] (ReqArg (\s conf -> conf { threshold = read s }) "max size of inlining") "max size of inlined function"
   , Option [] ["iter"] (ReqArg (\s conf -> conf { limit = read s }) "opt iteration") "maximum number of optimizations iterated"
   , Option [] ["glib"] (ReqArg (\s conf -> conf { glib = s : glib conf }) "library") "ml libraries"
+  , Option ['o'] ["output"] (ReqArg (\s conf -> conf { outFile = Just s }) "output") "output file"
   ] 
 
 parseOpt :: [String] -> (Config, [String])
 parseOpt argv =
   let (dat, nonOpts, errs) = getOpt Permute options argv in
   if null errs then
-    (foldl (.) id dat (Config 0 1000 []), nonOpts)
+    (foldl (.) id dat (Config 0 1000 [] Nothing), nonOpts)
   else
     error ("error on parsing command line:" ++ show errs)
 
@@ -62,8 +65,8 @@ extenv = Map.fromList
   ,(Id "print_newline", TFun [TUnit] TUnit)
   ]
 
-repl :: String -> IO ()
-repl str = do
+repl :: Config -> String -> IO ()
+repl conf str = do
   let lexed = MLexer.lex str
   let syntax = parse lexed
   case syntax of
@@ -97,7 +100,12 @@ repl str = do
       let peSSA = elimPhi regSSA
       print peSSA
       let insts = emit peSSA
-      mapM_ print insts
+      case outFile conf of
+        Nothing -> mapM_ print insts
+        Just x -> do
+          handle <- openFile x WriteMode
+          Inst.emit handle insts
+          hClose handle
     Left x -> error x
 
 processLib :: [String] -> IO (TypeEnv, [CVardef])
@@ -107,11 +115,11 @@ processLib = undefined
 main :: IO ()
 main = do
   argv <- getArgs
-  let (_conf, files) = parseOpt argv
+  let (conf, files) = parseOpt argv
   if null files then do
     putStrLn usage
     str <- getContents
-    repl str
+    repl conf str
   else
     print files
     
