@@ -31,7 +31,7 @@ emitFundef (SSAFundef (LId nm :-: ty) params formFV blks) = do
   modify $ \s -> s { currentFunction = nm }
   entryLabel <- freshLabel "entry"
   res <- fmap concat $ mapM emitBlock blks
-  return $ [Br rtmp entryLabel, Label nm] ++ res
+  return $ [Label nm, Br rtmp entryLabel] ++ res
 
 emitBlock :: Block -> M [ZekInst]
 emitBlock (Block blkId phi insts term) = do
@@ -156,19 +156,21 @@ emitArgs x_reg_cl ops =
 -- Float: $f0 ~ $f31
 
 {- 関数呼び出しのために引数を並べ替える (register shuffling) -}
-shuffle :: Eq a => a -> [(a, a)] -> [(a, a)]
+shuffle :: Operand -> [(Operand, Operand)] -> [(Operand, Operand)]
 shuffle sw xys =
+  let (xys0, imm) = List.partition (\ (x, y) -> case y of { OpVar {} -> True; _ -> False; }) xys in
   {- remove identical moves -}
-  let xys1 = List.filter (\ (x, y) -> x /= y) xys in
-    {- find acyclic moves -}
-    case List.partition (\ (_, y) -> List.lookup y xys /= Nothing) xys of
-      ([], []) -> []
-      ((x, y) : xys, []) -> {- no acyclic moves; resolve a cyclic move -}
-          (y, sw) : (x, y) :
-            shuffle sw (List.map (\e -> case e of
+  let xys1 = List.filter (\ (x, y) -> x /= y) xys0 in
+  {- find acyclic moves -}
+  let sub1 = case List.partition (\ (_, y) -> List.lookup y xys1 /= Nothing) xys1 of
+            ([], []) -> []
+            ((x, y) : xys, []) -> {- no acyclic moves; resolve a cyclic move -}
+                (y, sw) : (x, y) :
+                  shuffle sw (List.map (\e -> case e of
                                     (y', z) | y == y' -> (sw, z)
                                     yz -> yz) xys)
-      (xys, acyc) -> acyc ++ shuffle sw xys
+            (xys, acyc) -> acyc ++ shuffle sw xys
+  in sub1 ++ imm
 
 
 regOfString :: (Eq s, IsString s, Show s) => s -> Reg
