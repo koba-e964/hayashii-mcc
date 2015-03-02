@@ -19,12 +19,11 @@ sample/shuffle.ml sample/spill.ml sample/spill2.ml sample/spill3.ml sample/sum-t
 .PHONY: test_all clean
 test_all : $(SAMPLES:%.ml=%.x)
 
-%.s : %.ml
-	LANG=C.UTF-8 cabal run -- -o $*.s <$*.ml >$*.out
+%.s : %.ml $(CMP)
+	LANG=C.UTF-8 $(CMP) -o $*.s <$*.ml >$*.out
 clean : 
 	rm -f sample/*.out sample/*.s
 	rm -f $(ASM) $(EXEC)
-	-make -C min-caml clean
 	-cd Zekamashi/asm; omake clean
 	-make -C Zekamashi/sim clean
 %.test: %.x %.ml $(EXEC) converter
@@ -40,8 +39,6 @@ clean :
 	$(ASM) $*.s -o $*.x >/dev/null
 %-main.s: %-lib.ml %-main.ml $(CMP) $(LIB)
 	$(CMP) $(MCCFLAGS) $(STDLIB) -glib $*-lib $*-main
-%.s: %.ml $(CMP) $(LIB)
-	$(CMP) $(MCCFLAGS) $(STDLIB) $*
 min-caml/min-caml:
 	$(MAKE) -C min-caml -f Makefile.zek min-caml
 $(CMP): 

@@ -12,11 +12,12 @@ import SSA hiding (M)
 
 import qualified Data.Map as Map
 
-data Env = Env { labelMap :: !(Map.Map BlockID Label), blkIdx :: !Int, currentFunction :: !String } 
+data Env = Env { labelMap :: !(Map.Map BlockID Label), blkIdx :: !Int, currentFunction :: !SSAFundef } 
+data ParCopy = ParCopy ![VId] ![Operand]
 
 type M = State Env
 runM :: M a -> a
-runM x = evalState x (Env Map.empty 0 "undefined><><")
+runM x = evalState x (Env Map.empty 0 (SSAFundef (LId "undefined><><><" :-: TUnit) [] [] []))
 
 data TailInfo = Tail | NonTail !(Maybe VId)
 
@@ -27,8 +28,8 @@ emit fundefs = runM $ do
 
 
 emitFundef :: SSAFundef -> M [ZekInst]
-emitFundef (SSAFundef (LId nm :-: ty) params formFV blks) = do
-  modify $ \s -> s { currentFunction = nm }
+emitFundef fundef@(SSAFundef (LId nm :-: ty) _params _formFV blks) = do
+  modify $ \s -> s { currentFunction = fundef }
   entryLabel <- freshLabel "entry"
   res <- fmap concat $ mapM emitBlock blks
   return $ [Label nm, Br rtmp entryLabel] ++ res
@@ -37,24 +38,33 @@ emitBlock :: Block -> M [ZekInst]
 emitBlock (Block blkId phi insts term) = do
   lbl <- freshLabel blkId
   ii <- fmap concat $ mapM emitInst insts
-  ti <- emitTerm term
+  ti <- emitTerm blkId term
   return $ [Label lbl] ++ ii ++ ti
 emitInst (Inst dest op) = emitSub (NonTail dest) op
 
-emitTerm :: Term -> M [ZekInst]
-emitTerm (TRet (OpConst UnitConst)) =
+emitTerm :: BlockID -> Term -> M [ZekInst]
+emitTerm _ (TRet (OpConst UnitConst)) =
   return [Ret rtmp rlr]
-emitTerm (TRet v) = do
+emitTerm _ (TRet v) = do
   sub <- emitSub Tail (SId v)
   return $ sub ++ [Ret rtmp rlr]
-emitTerm (TJmp blk) = return [Br rtmp blk]
-emitTerm (TBr (OpVar (VId src :-: ty)) blk1 blk2)
+emitTerm blkFrom (TJmp blkTo) = do
+  pc <- findPhiCopy blkFrom blkTo
+  return $ emitParCopy pc ++ [Br rtmp blkTo]
+emitTerm blkFrom (TBr (OpVar (VId src :-: ty)) blk1 blk2)
   = do
   l1 <- freshLabel blk1
   l2 <- freshLabel blk2
-  return [ BC NE (regOfString src) l1
-    , Br rtmp l2
-    ]
+  pc1 <- findPhiCopy blkFrom blk1
+  pc2 <- findPhiCopy blkFrom blk2
+  fLabel <- freshLabel ("tbr." ++ blkFrom)
+  return $ [ BC NE (regOfString src) fLabel
+    ] ++ emitParCopy pc2 ++
+    [ Br rtmp l2
+    , Label fLabel
+    ] ++ emitParCopy pc1 ++
+    [ Br rtmp l1
+    ] {- Not confirmed -}
 
 emitSub :: TailInfo -> Op -> M [ZekInst]
 emitSub _ (SCall (LId "@store" :-: _) [OpVar (VId v :-: _), OpConst (IntConst i)]) =
@@ -123,6 +133,30 @@ emitSub Tail exp@(SFNeg {}) = emitSub (NonTail (Just (retReg TFloat))) exp
 emitSub Tail exp@(SFloatBin {}) = emitSub (NonTail (Just (retReg TFloat))) exp
 emitSub Tail exp@(SNeg {}) = emitSub (NonTail (Just (retReg TInt))) exp
 emitSub x y = error $ "undefined behavior in emitSub: " ++ show y 
+
+emitParCopy :: ParCopy -> [ZekInst]
+emitParCopy (ParCopy var col) =
+  let (ys, zs) = List.partition (\(_, x) -> getType x /= TFloat) (zip var col) in
+  let yrs = [
+        (ysrc, OpVar (ydest :-: getType ysrc)) |
+        (ydest, ysrc) <- ys] in
+  let gprs = List.concatMap
+        (\ (y, r) -> movOperand y r)
+        (shuffle (operandOfReg rtmp) yrs) in
+  let zfrs = [
+        (zsrc, OpVar (zdest :-: getType zsrc)) |
+        (zdest, zsrc) <- zs] in
+  let fregs = List.concatMap
+        (\ (z, fr) -> fmovOperand z fr)
+        (shuffle (OpVar (VId (show frtmp) :-: TFloat)) zfrs) in
+    gprs ++ fregs
+  where
+    operandOfReg x = OpVar (VId (show x) :-: TInt)
+    movOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = mov (regOfString a) (regOfString b)
+    movOperand (OpConst (IntConst v)) (OpVar (b :-: _)) = li32 (fromIntegral v) (regOfString b)
+    fmovOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = fmov (fregOfString a) (fregOfString b)
+    fmovOperand (OpConst (FloatConst v)) (OpVar (b :-: _)) = lfi (realToFrac v) (fregOfString b)
+
 
 retReg :: Type -> VId
 retReg ty =
@@ -195,7 +229,7 @@ regimmOfOperand (OpVar (VId src :-: ty)) = case regOfString src of Reg x -> RIRe
 
 freshLabel :: BlockID -> M Label
 freshLabel blkId = do
-  f <- gets currentFunction
+  LId f :-: _ <- gets (SSA.name . currentFunction)
   let uid = f ++ "." ++ blkId
   lm <- gets labelMap
   if Map.member uid lm then
@@ -205,4 +239,10 @@ freshLabel blkId = do
     let str = uid ++ "." ++ show x 
     modify $ \s -> s { labelMap = Map.insert uid str lm, blkIdx = x + 1 }
     return str
+
+findPhiCopy :: BlockID -> BlockID -> M ParCopy
+findPhiCopy blkFrom blkTo = do
+  blks <- gets (blocks . currentFunction)
+  let Block _ (Phi vars cols) _ _ = head $ filter (\(Block bid _ _ _) -> bid == blkTo) blks
+  return $ ParCopy vars (cols Map.! blkFrom)
 
