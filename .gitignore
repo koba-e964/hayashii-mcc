@@ -8,3 +8,5 @@ cabal.sandbox.config
 dist/
 *.out
 *.s
+sample/*.x
+build/
