@@ -11,6 +11,7 @@ import SSA
 
 import qualified Interfere as Intf
 import Interfere (Interference)
+import qualified Graph
 
 genPhi :: Phi -> BlockID -> Set VId
 genPhi (Phi _ cols) blk = Set.unions $ List.map genOperand $ cols Map.! blk
@@ -85,14 +86,14 @@ analyzeLiveness fundef@(SSAFundef _ _ _ blks) = minFix (nextSets fundef) w where
 
 
 accLiveInfo :: LiveInfo -> Interference
-accLiveInfo (LiveInfo info) = Map.foldl' (\x y -> x `Intf.union` accBlockLive y) Intf.empty info
+accLiveInfo (LiveInfo info) = Map.foldl' (\x y -> x `Graph.union` accBlockLive y) Graph.empty info
 
 accBlockLive :: BlockLive -> Interference
-accBlockLive (BlockLive phil instl terml) = Map.foldl' (\x y -> x `Intf.union` accInstLive y) Intf.empty phil `Intf.union`
-  (List.foldl' (\x y -> x `Intf.union` accInstLive y) Intf.empty instl) `Intf.union` accInstLive terml
+accBlockLive (BlockLive phil instl terml) = Map.foldl' (\x y -> x `Graph.union` accInstLive y) Graph.empty phil `Graph.union`
+  (List.foldl' (\x y -> x `Graph.union` accInstLive y) Graph.empty instl) `Graph.union` accInstLive terml
 
 accInstLive :: InstLive -> Interference
-accInstLive (InstLive i o) = Intf.clique i `Intf.union` Intf.clique o where
+accInstLive (InstLive i o) = Graph.clique i `Graph.union` Graph.clique o where
 
 
 

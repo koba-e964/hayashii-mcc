@@ -6,30 +6,9 @@ import Data.Function (on)
 import qualified Data.List as List
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import Graph
 
-type Interference = Map.Map VId (Set.Set VId)
-
-empty :: Interference
-empty = Map.empty
-
-union :: Interference -> Interference -> Interference
-union i1 i2 = Map.unionWith Set.union i1 i2
-
-
-clique :: Set.Set VId -> Interference
-clique set = Map.fromSet (\x -> set `Set.difference` Set.singleton x) set
-
-vertices :: Interference -> [VId]
-vertices = Map.keys
-
-degree :: Interference -> VId -> Int
-degree i v = Set.size (i Map.! v)
-
-removeVertex :: Interference -> VId -> Interference
-removeVertex intGr v = Map.map (Set.delete v) $ Map.delete v intGr
-
-neighbors :: Interference -> VId -> [VId]
-neighbors i v = Set.toList $ i Map.! v
+type Interference = Graph VId
 
 -- | Trial of k-coloring using heuristics.
 -- | If this function succeeds to color the given graph, it returns the mapping of color wrapped with Right.
