@@ -371,4 +371,22 @@ fvOperand :: Operand -> [VId]
 fvOperand (OpVar (vid :-: _)) = [vid]
 fvOperand _ = []
 
+nextOfTerm :: Term -> [BlockID]
+nextOfTerm (TRet _) = []
+nextOfTerm (TBr _ blk1 blk2) = [blk1, blk2]
+nextOfTerm (TJmp blk) = [blk]
 
+nextBlocks :: Block -> [BlockID]
+nextBlocks (Block _ _ _ t) = nextOfTerm t
+
+prevOfPhi :: Phi -> [BlockID]
+prevOfPhi (Phi _ cols) = Map.keys cols
+
+prevBlocks :: Block -> [BlockID]
+prevBlocks (Block _ phi _ _) = prevOfPhi phi
+
+getBlockByID :: SSAFundef -> BlockID -> Block
+getBlockByID SSAFundef { blocks = blks } blkID = head $ filter (\(Block bid _ _ _) -> bid == blkID) blks
+
+blockID :: Block -> BlockID
+blockID (Block b _ _ _) = b

@@ -242,7 +242,7 @@ freshLabel blkId = do
 
 findPhiCopy :: BlockID -> BlockID -> M ParCopy
 findPhiCopy blkFrom blkTo = do
-  blks <- gets (blocks . currentFunction)
-  let Block _ (Phi vars cols) _ _ = head $ filter (\(Block bid _ _ _) -> bid == blkTo) blks
+  curFun <- gets currentFunction
+  let Block _ (Phi vars cols) _ _ = getBlockByID curFun blkTo
   return $ ParCopy vars (cols Map.! blkFrom)
 

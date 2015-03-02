@@ -25,6 +25,7 @@ import RegAlloc
 import PhiElim
 import Emit
 import qualified Inst
+import SSADom
 
 data Config = Config { threshold :: !Int, limit :: !Int, glib :: ![String], outFile :: !(Maybe String) }
 
@@ -82,17 +83,9 @@ repl conf str = do
       putStrLn "**** optimized SSA ****"
       let optSSA = iterate (eliminate . simplify . reduce . constFold . propagate) ssa !! 10
       print optSSA
-{-
-      forM_ optSSA $ \fundef@SSAFundef { SSA.name = LId x :-: _ } -> do
-        let liveness = analyzeLiveness fundef
-        putStrLn $ "liveness of " ++ x ++ ":"
-        print liveness
-        putStrLn $ "int-graph of " ++ x ++ ":"
-        let intf = accLiveInfo liveness
-        print intf
-        putStrLn $ "coloring of " ++ x ++ ":"
-        print (tryColoring intf 5)
--}
+      putStrLn "*** Dominance ***"
+      forM_ (map dominance optSSA) $ \x -> do
+        print x
       let regSSA = regAlloc optSSA
       putStrLn "**** register-allocated SSA ****"
       print regSSA

@@ -58,13 +58,6 @@ instance Show BlockLive where
 instance Show LiveInfo where
   show (LiveInfo info) = List.intercalate "\n" (map (\i -> show i ++ "\n") $ Map.toList info)
 
-nextOfTerm :: Term -> [BlockID]
-nextOfTerm (TRet _) = []
-nextOfTerm (TBr _ blk1 blk2) = [blk1, blk2]
-nextOfTerm (TJmp blk) = [blk]
-
-prevOfPhi :: Phi -> [BlockID]
-prevOfPhi (Phi _ cols) = Map.keys cols
 
 nextSets :: SSAFundef -> LiveInfo -> LiveInfo
 nextSets (SSAFundef _ _ _ blks) (LiveInfo linfo) =
