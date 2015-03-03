@@ -5,6 +5,7 @@ import Prelude hiding (EQ)
 import System.IO (Handle, hPutStrLn)
 import Data.Binary.IEEE754 (floatToWord)
 import Data.Word (Word32)
+import Data.Bits
 
 newtype Reg = Reg Int deriving (Eq) -- 0..31
 newtype FReg = FReg Int deriving (Eq) -- 0..31
@@ -126,8 +127,13 @@ li :: Disp16 -> Reg -> ZekInst
 li imm dest = Lda dest imm (Reg 31)
 
 li32 :: Word32 -> Reg -> [ZekInst]
-li32 imm dest = [Lda dest (fromIntegral imm) (Reg 31)]
-
+li32 imm dest = 
+  let (yd, x) = decomposeWord32 imm in
+  if yd == 0 then [Lda dest x (Reg 31)]
+  else if x == 0 then
+    [Ldah dest yd (Reg 31)]
+  else
+    [Lda dest x (Reg 31), Ldah dest yd dest]
 lfi :: Float -> FReg -> [ZekInst]
 lfi imm dest = li32 (floatToWord imm) rtmp ++ [Itofs rtmp dest]
 
@@ -148,5 +154,37 @@ rsp = Reg 30
 frtmp = FReg 30
 
 abstAdd :: Reg -> Word32 -> Reg -> [ZekInst]
-abstAdd rsrc imm rdest = [Lda rdest (fromIntegral imm) rsrc]
+abstAdd rsrc imm rdest =
+ let (x, y) = decomposeWord32 imm in
+ if x == 0 then
+   if y == 0 then []
+   else [Lda rdest y rsrc]
+ else
+   if y == 0 then [Ldah rdest x rsrc]
+   else [Lda rdest y rsrc, Ldah rdest x rdest]
+
+
+-- | Decomposes unsigned 32-bit word to signed 16-bit integers.
+-- | decomposeWord32 w returns (x, y) s.t. fromIntegral (x * 65536 + y) == w and x, y in [-0x8000, 0x7fff]
+--
+-- >>> Inst.decomposeWord32 100
+-- (0,100)
+-- >>> Inst.decomposeWord32 65537
+-- (1,1)
+-- >>> Inst.decomposeWord32 (-65537)
+-- (-1,-1)
+-- >>> Inst.decomposeWord32 (-2147483648)
+-- (-32768,0)
+-- >>> Inst.decomposeWord32 (2147483647)
+-- (-32768,-1)
+-- >>> Inst.decomposeWord32 (65535 * 32768)
+-- (-32768,-32768)
+-- >>> Inst.decomposeWord32 (65535 * 32767)
+-- (32767,-32767)
+
+decomposeWord32 :: Word32 -> (Disp16, Disp16)
+decomposeWord32 w = let x = (fromIntegral ((w + 0x8000) `mod` 0x10000) - 0x8000 :: Disp16) in
+  let y = (w - fromIntegral x) `shiftR` 16 in
+  let yd = if y >= 0x8000 then fromIntegral y - 0x10000 else (fromIntegral y :: Disp16) in {- yd \in [-0x8000, 0x7fff] -}
+  (yd, x)
 

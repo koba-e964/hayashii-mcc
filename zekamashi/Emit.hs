@@ -89,13 +89,20 @@ emitSub (NonTail (Just (VId nm))) (SId (OpVar (VId src :-: ty))) =
     return $ cp src nm
 emitSub (NonTail (Just (VId nm))) (SId (OpConst (IntConst x))) =
     return $ li32 (fromIntegral x) (regOfString nm)
-emitSub (NonTail (Just (VId nm))) (SArithBin aop (OpVar (VId src :-: ty)) op2) =
+emitSub (NonTail (Just (VId nm))) (SArithBin aop (OpVar (VId src :-: _ty)) o2@(OpVar (VId _src2 :-: _ty2))) =
   let ctor = case aop of
         Add -> Addl
         Sub -> Subl
         Mul -> undefined
         Div -> undefined
-  in return $ [ctor (regOfString src) (regimmOfOperand op2) (regOfString nm)]
+  in return [ctor (regOfString src) (regimmOfOperand o2) (regOfString nm)]
+emitSub (NonTail (Just (VId nm))) (SArithBin aop (OpVar (VId src :-: ty)) (OpConst (IntConst imm))) =
+  let val = case aop of
+        Add -> imm
+        Sub -> - imm
+        Mul -> undefined
+        Div -> undefined
+  in return $ abstAdd (regOfString src) (fromIntegral val) (regOfString nm)
 emitSub (NonTail (Just (VId nm))) (SNeg o@(OpVar (VId src :-: ty))) =
   return $ [Subl (Reg 31) (regimmOfOperand o) (regOfString nm)]
 emitSub (NonTail (Just (VId nm))) (SFloatBin bop (OpVar (VId src1 :-: _)) (OpVar (VId src2 :-: _))) =
