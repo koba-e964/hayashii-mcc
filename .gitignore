@@ -10,3 +10,9 @@ dist/
 *.s
 sample/*.x
 build/
+*.html
+haddock-util.js
+*.png
+*.gif
+*.css
+

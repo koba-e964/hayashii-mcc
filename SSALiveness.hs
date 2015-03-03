@@ -9,7 +9,6 @@ import Id
 import Type
 import SSA
 
-import qualified Interfere as Intf
 import Interfere (Interference)
 import qualified Graph
 

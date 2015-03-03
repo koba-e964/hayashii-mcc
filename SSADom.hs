@@ -5,8 +5,9 @@ import qualified Data.Set as Set
 import Data.List
 
 import SSA
+import Graph
 
-type Dom = Map.Map BlockID (Set.Set BlockID)
+type Dom = Graph BlockID
 -- | emptyDom represents the initial dominance relation of equation, in which every dominance holds.
 emptyDom :: SSAFundef -> Dom
 emptyDom SSAFundef { blocks = blks } =
