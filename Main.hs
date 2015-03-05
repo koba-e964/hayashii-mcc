@@ -47,8 +47,8 @@ parseOpt argv =
     error ("error on parsing command line:" ++ show errs)
 
 usage :: String
-usage = "MinCaml on Haskell\n"
-      ++ "usage: min-caml [--inline m] [--iter n] ...filenames without \".ml\"..."
+usage = "Hayashii MinCaml Compiler\n"
+      ++ "usage: hmcc [--inline m] [--iter n] ...filenames without \".ml\"..."
 
 
 extenv :: TypeEnv

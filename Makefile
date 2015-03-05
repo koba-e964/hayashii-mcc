@@ -1,5 +1,5 @@
 BUILD = build/
-CMP   = .cabal-sandbox/bin/min-caml-zek
+CMP   = .cabal-sandbox/bin/hmcc
 ASM   = $(BUILD)assembler
 EXEC  = $(BUILD)executer
 MCCFLAGS = -i -inline 5

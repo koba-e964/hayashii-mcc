@@ -12,7 +12,7 @@ category: Language
 author: koba-e964
 data-dir: ""
  
-executable min-caml-zek
+executable hmcc
     build-depends: base >=4 && <5, array >=0.4, mtl >=2.2,
                    containers >=0.5, primitive >=0.5, transformers >=0.3.0.0,
                    data-binary-ieee754 >= 0.4
