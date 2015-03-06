@@ -9,6 +9,7 @@ import Id
 import Type
 import Inst
 import SSA hiding (M)
+import AsmHelper
 
 import qualified Data.Map as Map
 

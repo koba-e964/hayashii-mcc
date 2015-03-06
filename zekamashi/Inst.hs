@@ -7,17 +7,12 @@ import Data.Binary.IEEE754 (floatToWord)
 import Data.Word (Word32)
 import Data.Bits
 
-newtype Reg = Reg Int deriving (Eq) -- 0..31
-newtype FReg = FReg Int deriving (Eq) -- 0..31
+import AsmHelper
 
 data RegImm =
   RIReg !Int | RIImm !Int
   deriving (Eq)
 
-instance Show Reg where
-  show (Reg i) = "$" ++ show i
-instance Show FReg where
-  show (FReg i) = "$f" ++ show i
 instance Show RegImm where
   show e = case e of
     RIReg i -> "$" ++ show i
@@ -137,21 +132,6 @@ li32 imm dest =
 lfi :: Float -> FReg -> [ZekInst]
 lfi imm dest = li32 (floatToWord imm) rtmp ++ [Itofs rtmp dest]
 
-rcl :: Reg
-rtmp2 :: Reg
-rhp :: Reg
-rtmp :: Reg
-rlr :: Reg
-rsp :: Reg
-frtmp :: FReg
-
-rcl = Reg 25
-rtmp2 = Reg 26
-rhp = Reg 27
-rtmp = Reg 28
-rlr = Reg 29
-rsp = Reg 30
-frtmp = FReg 30
 
 abstAdd :: Reg -> Word32 -> Reg -> [ZekInst]
 abstAdd rsrc imm rdest =
