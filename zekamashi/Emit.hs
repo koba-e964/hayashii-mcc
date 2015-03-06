@@ -191,12 +191,6 @@ emitParCopy (ParCopy var col) =
         (\ (z, fr) -> fmovOperand z fr)
         (shuffle (OpVar (VId (show frtmp) :-: TFloat)) zfrs) in
     gprs ++ fregs
-  where
-    operandOfReg x = OpVar (VId (show x) :-: TInt)
-    movOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = mov (regOfString a) (regOfString b)
-    movOperand (OpConst (IntConst v)) (OpVar (b :-: _)) = li32 (fromIntegral v) (regOfString b)
-    fmovOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = fmov (fregOfString a) (fregOfString b)
-    fmovOperand (OpConst (FloatConst v)) (OpVar (b :-: _)) = lfi (realToFrac v) (fregOfString b)
 
 
 retReg :: Type -> VId
@@ -225,12 +219,6 @@ emitArgs x_reg_cl ops =
         (\ (z, fr) -> fmovOperand z fr)
         (shuffle (OpVar (VId (show frtmp) :-: TFloat)) zfrs) in
     gprs ++ fregs
-  where
-    operandOfReg x = OpVar (VId (show x) :-: TInt)
-    movOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = mov (regOfString a) (regOfString b)
-    movOperand (OpConst (IntConst v)) (OpVar (b :-: _)) = li32 (fromIntegral v) (regOfString b)
-    fmovOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = fmov (fregOfString a) (fregOfString b)
-    fmovOperand (OpConst (FloatConst v)) (OpVar (b :-: _)) = lfi (realToFrac v) (fregOfString b)
 -- helper functions
 
 -- GPR: $0 ~ $31 ($31 = 0)
@@ -253,7 +241,6 @@ shuffle sw xys =
             (xys', acyc) -> acyc ++ shuffle sw xys'
   in sub1 ++ imm
 
-
 regOfString :: (Eq s, IsString s, Show s) => s -> Reg
 regOfString s = case List.elemIndex s [fromString $ "$" ++ show i | i <- [0..31 :: Int]] of
   Just r  -> Reg r
@@ -266,7 +253,8 @@ fregOfString s = case List.elemIndex s [fromString $ "$f" ++ show i | i <- [0..3
 
 regimmOfOperand :: Operand -> RegImm
 regimmOfOperand (OpConst (IntConst x)) = RIImm (fromIntegral x)
-regimmOfOperand (OpVar (VId src :-: ty)) = case regOfString src of Reg x -> RIReg x
+regimmOfOperand (OpConst y) = error $ "regimmOfOperand: invalid argument: " ++ show y
+regimmOfOperand (OpVar (VId src :-: _)) = case regOfString src of Reg x -> RIReg x
 
 freshLabel :: BlockID -> M Label
 freshLabel blkId = do
@@ -286,4 +274,19 @@ findPhiCopy blkFrom blkTo = do
   curFun <- gets currentFunction
   let Block _ (Phi vars cols) _ _ = getBlockByID curFun blkTo
   return $ ParCopy vars (cols Map.! blkFrom)
+
+operandOfReg :: Reg -> Operand
+operandOfReg x = OpVar (VId (show x) :-: TInt)
+
+
+movOperand :: Operand -> Operand -> [ZekInst]
+movOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = mov (regOfString a) (regOfString b)
+movOperand (OpConst (IntConst v)) (OpVar (b :-: _)) = li32 (fromIntegral v) (regOfString b)
+movOperand (OpConst UnitConst) (OpVar (b :-: _)) = []
+movOperand x y = error $ "movOperand: invalid arguments: " ++ show x ++ ", " ++ show y
+
+fmovOperand :: Operand -> Operand -> [ZekInst]
+fmovOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = fmov (fregOfString a) (fregOfString b)
+fmovOperand (OpConst (FloatConst v)) (OpVar (b :-: _)) = lfi (realToFrac v) (fregOfString b)
+fmovOperand x y = error $ "fmovOperand: invalid arguments: " ++ show x ++ ", " ++ show y
 
