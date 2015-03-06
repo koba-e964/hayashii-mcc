@@ -66,13 +66,16 @@ emitTerm blkFrom (TBr (OpVar (VId src :-: ty)) blk1 blk2)
     [ Br rtmp l1
     ] {- Not confirmed -}
 
+
+-- | Emit code corresponding to the given Op.
 emitSub :: TailInfo -> Op -> M [ZekInst]
 emitSub _ (SCall (LId "@store" :-: _) [OpVar (VId v :-: _), OpConst (IntConst i)]) =
   return [Stl (regOfString v) (fromIntegral i) rsp] 
 emitSub (NonTail (Just (VId nm))) (SCall (LId "@load" :-: _) [OpConst (IntConst i)]) =
   return [Ldl (regOfString nm) (fromIntegral i) rsp] 
-emitSub Tail (SCall (LId lid :-: ty) ops) = return [Br rlr lid]
-emitSub (NonTail Nothing) (SCall (LId lid :-: ty) ops) = return [Bsr rlr lid]
+-- function call (tailcall/call with no result)
+emitSub Tail (SCall (LId lid :-: _ty) ops) = return $ emitArgs [] ops ++ [Br rlr lid]
+emitSub (NonTail Nothing) (SCall (LId lid :-: _ty) ops) = return $ emitArgs [] ops ++ [Bsr rlr lid]
 emitSub (NonTail Nothing) _ = return [] -- if not SCall there is no side-effect.
 emitSub (NonTail (Just (VId nm))) o@(SCall (LId lid :-: ty) ops)
   | typeOfOp o == TFloat =
@@ -81,14 +84,18 @@ emitSub (NonTail (Just (VId nm))) o@(SCall (LId lid :-: ty) ops)
 emitSub (NonTail (Just (VId nm))) (SCall (LId lid :-: ty) ops) =
   let q = emitArgs [] ops in
   return $ q ++ [Bsr rlr lid] ++ cp "$0" nm
-emitSub Tail (SCall (LId lid :-: ty) ops) = return [Br rtmp lid]
+-- SId
 emitSub (NonTail (Just (VId nm))) o@(SId (OpVar (VId src :-: ty)))
   | typeOfOp o == TFloat =
     return $ fmov (fregOfString src) (fregOfString nm)
 emitSub (NonTail (Just (VId nm))) (SId (OpVar (VId src :-: ty))) =
     return $ cp src nm
-emitSub (NonTail (Just (VId nm))) (SId (OpConst (IntConst x))) =
-    return $ li32 (fromIntegral x) (regOfString nm)
+emitSub (NonTail (Just (VId nm))) (SId (OpConst cnst)) =
+    case cnst of
+      IntConst x   -> return $ li32 (fromIntegral x) (regOfString nm)
+      FloatConst x -> return $ lfi (fromRational (toRational x)) (fregOfString nm)
+      UnitConst    -> return []
+-- Arithmetic operations
 emitSub (NonTail (Just (VId nm))) (SArithBin aop (OpVar (VId src :-: _ty)) o2@(OpVar (VId _src2 :-: _ty2))) =
   let ctor = case aop of
         Add -> Addl
@@ -103,8 +110,11 @@ emitSub (NonTail (Just (VId nm))) (SArithBin aop (OpVar (VId src :-: ty)) (OpCon
         Mul -> undefined
         Div -> undefined
   in return $ abstAdd (regOfString src) (fromIntegral val) (regOfString nm)
+-- Negation (-x)
 emitSub (NonTail (Just (VId nm))) (SNeg o@(OpVar (VId src :-: ty))) =
   return $ [Subl (Reg 31) (regimmOfOperand o) (regOfString nm)]
+
+-- float binary operation
 emitSub (NonTail (Just (VId nm))) (SFloatBin bop (OpVar (VId src1 :-: _)) (OpVar (VId src2 :-: _))) =
   let ctor = case bop of
         FAdd -> FOpAdd
@@ -113,13 +123,31 @@ emitSub (NonTail (Just (VId nm))) (SFloatBin bop (OpVar (VId src1 :-: _)) (OpVar
         FDiv -> undefined
   in
     return $ [FOp ctor (fregOfString src1) (fregOfString src2) (fregOfString nm)]
+emitSub (NonTail (Just (VId nm))) (SFloatBin bop (OpVar (VId src1 :-: _)) (OpConst (FloatConst fv))) =
+  let ctor = case bop of
+        FAdd -> FOpAdd
+        FSub -> FOpSub
+        FMul -> FOpMul
+        FDiv -> undefined
+  in
+    return $ lfi (fromRational (toRational fv)) frtmp ++ [FOp ctor (fregOfString src1) frtmp (fregOfString nm)]
+emitSub (NonTail (Just (VId nm))) (SFloatBin bop (OpConst (FloatConst fv)) (OpVar (VId src2 :-: _))) =
+  let ctor = case bop of
+        FAdd -> FOpAdd
+        FSub -> FOpSub
+        FMul -> FOpMul
+        FDiv -> undefined
+  in
+    return $ lfi (fromRational (toRational fv)) frtmp ++ [FOp ctor frtmp (fregOfString src2) (fregOfString nm)]
+-- float comparison
 emitSub (NonTail (Just (VId nm))) (SCmpBin cop o@(OpVar (VId src1 :-: _)) (OpVar (VId src2 :-: _)))
   | getType o == TFloat =
   let ctor = case cop of
         Syntax.Eq -> CEQ
         Syntax.LE -> CLE
   in
-    return $ [Cmps ctor (fregOfString src1) (fregOfString src2) (fregOfString nm)]
+    return $ [Cmps ctor (fregOfString src1) (fregOfString src2) (fregOfString nm)] -- TODO nm is integral register
+-- integer comparison
 emitSub (NonTail (Just (VId nm))) (SCmpBin cop (OpVar (VId src :-: ty)) op2) =
   let ctor = case cop of
         Syntax.Eq -> CEQ
@@ -139,7 +167,7 @@ emitSub Tail exp@(SCmpBin {}) = emitSub (NonTail (Just (retReg TInt))) exp
 emitSub Tail exp@(SFNeg {}) = emitSub (NonTail (Just (retReg TFloat))) exp
 emitSub Tail exp@(SFloatBin {}) = emitSub (NonTail (Just (retReg TFloat))) exp
 emitSub Tail exp@(SNeg {}) = emitSub (NonTail (Just (retReg TInt))) exp
-emitSub x y = error $ "undefined behavior in emitSub: " ++ show y 
+emitSub (NonTail x) y = error $ "undefined behavior in emitSub: " ++ show y 
 
 emitParCopy :: ParCopy -> [ZekInst]
 emitParCopy (ParCopy var col) =
