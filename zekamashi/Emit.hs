@@ -26,7 +26,9 @@ data TailInfo = Tail | NonTail !(Maybe VId)
 emit :: [SSAFundef] -> [ZekInst]
 emit fundefs = runM $ do
   sub <- fmap concat $ mapM emitFundef fundefs
-  return $ [Br rtmp "main"] ++ sub
+  let endLabel = "min_caml_end"
+  let epilogue = [ExtFile "zekamashi/libmincaml.txt", Label endLabel, Br rtmp endLabel]
+  return $ [Bsr rlr "main", Br rtmp endLabel] ++ sub ++ epilogue
 
 
 emitFundef :: SSAFundef -> M [ZekInst]

@@ -1,0 +1,162 @@
+min_caml_print_int:
+# while ((*0x100002 & 1) == 0) {}
+#   *0x100003 = data & 255;
+	LDAH $1, 16($31)
+	LDA $2, 0($0)
+mcpi0:
+	LDL $3, 2($1)
+	AND $3, 1, $4
+	BEQ $4, mcpi0
+	AND $0, 255, $4
+	STL $4, 3($1)
+	SRL $0, 8, $0
+mcpi1:
+	LDL $3, 2($1)
+	AND $3, 1, $4
+	BEQ $4, mcpi1
+	AND $0, 255, $4
+	STL $4, 3($1)
+	SRL $0, 8, $0
+mcpi2:
+	LDL $3, 2($1)
+	AND $3, 1, $4
+	BEQ $4, mcpi2
+	AND $0, 255, $4
+	STL $4, 3($1)
+	SRL $0, 8, $0
+mcpi3:
+	LDL $3, 2($1)
+	AND $3, 1, $4
+	BEQ $4, mcpi3
+	AND $0, 255, $4
+	STL $4, 3($1)
+	LDA $0, 0($2)
+	RET $28, ($29)
+min_caml_print_char:
+# while ((*0x100002 & 1) == 0) {}
+#   *0x100003 = data & 255;
+	LDAH $1, 16($31)
+	LDA $2, 0($0)
+mcpc:
+	LDL $3, 2($1)
+	AND $3, 1, $4
+	BEQ $4, mcpc
+	AND $0, 255, $4
+	STL $4, 3($1)
+	RET $28, ($29)
+
+min_caml_read_int:
+# while (*0x100000 & 1 == 0) {}
+#   data = *0x100001;
+	LDAH $1, 16($31)
+	LDA $2, 0($0)
+mcri0:
+	LDL $3, 0($1)
+	AND $3, 1, $4
+	BEQ $4, mcri0
+	LDL $0, 1($1)
+mcri1:
+	LDL $3, 0($1)
+	AND $3, 1, $4
+	BEQ $4, mcri1
+	LDL $4, 1($1)
+	SLL $4, 8, $4
+	BIS $0, $4, $0
+mcri2:
+	LDL $3, 0($1)
+	AND $3, 1, $4
+	BEQ $4, mcri2
+	LDL $4, 1($1)
+	SLL $4, 16, $4
+	BIS $0, $4, $0
+mcri3:
+	LDL $3, 0($1)
+	AND $3, 1, $4
+	BEQ $4, mcri3
+	LDL $4, 1($1)
+	SLL $4, 24, $4
+	BIS $0, $4, $0
+
+	RET $28, ($29)
+
+min_caml_read_float:
+	STL $29, 0($30)
+	LDA $30, 1($30)
+	BSR $29, min_caml_read_int
+	LDA $30, -1($30)
+	LDL $29, 0($30)
+	ITOFS $0, $f0
+	RET $28, ($29)
+
+min_caml_int_of_float:
+min_caml_truncate:
+	CVTSL/C $f0, $f0
+	FTOIS $f0, $0
+	RET $28, ($29)
+
+min_caml_float_of_int:
+	LDA $23, 0($0)
+	ITOFS $23, $f19
+	CVTLS $f19, $f0
+	RET $28, ($29)
+
+min_caml_floor:
+	CMPSLE $f0, $f31, $f1
+	FBNE $f1, mcf_neg
+	#positive
+	CVTSL/C $f0, $f0
+	CVTLS $f0, $f0
+	RET $28, ($29)
+mcf_neg: #negative
+	CVTSL/C $f0, $f1
+	CVTLS $f1, $f1
+	CMPSEQ $f0, $f1, $f2
+	FBNE $f2, mcf_neg_exact
+	# if not exact, subtract 1.0 from given value
+	LDAH $15, 0x3f80($31)
+	ITOFS $15, $f17
+	SUBS $f1, $f17, $f0
+mcf_neg_exact:
+	RET $28, ($29)
+
+min_caml_sqrt:
+	SQRTS $f0, $f0
+	RET $28, ($29)
+
+min_caml_create_array: # int -> 'a -> 'a array
+	LDA $3, 0($27)
+	LDA $6, 0($3) # old_min_caml_hp
+	LDA $4, 0($0)
+lmcca2:
+	BEQ $4, lmcca3
+	STL $1, 0($3)
+	ADDL $3, 1, $3   # sizeof(int) = 1
+	SUBL $4, 1, $4
+	BR $28, lmcca2
+lmcca3:
+	LDA $27, 0($3)
+	LDA $0, 0($6)
+	RET $28, ($29)
+min_caml_create_float_array: # int -> float -> float array
+	LDA $3, 0($27)
+	LDA $6, 0($3) # old_min_caml_hp
+	LDA $4, 0($0)
+lmccfa2:
+	BEQ $4, lmccfa3
+	STS $f0, 0($3)
+	ADDL $3, 1, $3   # sizeof(float) = 1
+	SUBL $4, 1, $4
+	BR $28, lmccfa2
+lmccfa3:
+	LDA $27, 0($3)
+	LDA $0, 0($6)
+	RET $28, ($29)
+min_caml_print_newline:
+	RET $28, ($29)
+min_caml_bits_of_float:
+	FTOIS $f0, $0
+	RET $28, ($29)	
+min_caml_float_of_bits:
+	ITOFS $0, $f0
+	RET $28, ($29)
+

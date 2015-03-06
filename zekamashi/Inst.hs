@@ -102,7 +102,7 @@ instance Show ZekInst where
     Itofs a b -> "\tITOFS\t" ++ show a ++ ", " ++ show b
     Label l -> l ++ ":"
     Comment s -> "    # " ++ s ++ "\n"
-    ExtFile _ -> error "show_zek_inst for ExtFile"
+    ExtFile filename -> "# warning: show_zek_inst for ExtFile. This part should be replaced with the content of the file:" ++ filename
 
 emit_inst :: Handle -> ZekInst -> IO ()
 emit_inst oc e = case e of
