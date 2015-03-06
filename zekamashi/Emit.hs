@@ -22,6 +22,7 @@ runM x = evalState x (Env Map.empty 0 (SSAFundef (LId "undefined><><><" :-: TUni
 
 data TailInfo = Tail | NonTail !(Maybe VId)
 
+-- | Converts SSAFundef to instructions
 emit :: [SSAFundef] -> [ZekInst]
 emit fundefs = runM $ do
   sub <- fmap concat $ mapM emitFundef fundefs
@@ -29,18 +30,20 @@ emit fundefs = runM $ do
 
 
 emitFundef :: SSAFundef -> M [ZekInst]
-emitFundef fundef@(SSAFundef (LId nm :-: ty) _params _formFV blks) = do
+emitFundef fundef@(SSAFundef (LId nm :-: _ty) _params _formFV blks) = do
   modify $ \s -> s { currentFunction = fundef }
   entryLabel <- freshLabel "entry"
   res <- fmap concat $ mapM emitBlock blks
   return $ [Label nm, Br rtmp entryLabel] ++ res
 
 emitBlock :: Block -> M [ZekInst]
-emitBlock (Block blkId phi insts term) = do
+emitBlock (Block blkId _phi insts term) = do
   lbl <- freshLabel blkId
   ii <- fmap concat $ mapM emitInst insts
   ti <- emitTerm blkId term
   return $ [Label lbl] ++ ii ++ ti
+
+emitInst :: Inst -> M [ZekInst]
 emitInst (Inst dest op) = emitSub (NonTail dest) op
 
 emitTerm :: BlockID -> Term -> M [ZekInst]
@@ -52,7 +55,7 @@ emitTerm _ (TRet v) = do
 emitTerm blkFrom (TJmp blkTo) = do
   pc <- findPhiCopy blkFrom blkTo
   return $ emitParCopy pc ++ [Br rtmp blkTo]
-emitTerm blkFrom (TBr (OpVar (VId src :-: ty)) blk1 blk2)
+emitTerm blkFrom (TBr (OpVar (VId src :-: _ty)) blk1 blk2)
   = do
   l1 <- freshLabel blk1
   l2 <- freshLabel blk2
@@ -78,23 +81,22 @@ emitSub (NonTail (Just (VId nm))) (SCall (LId "@load" :-: _) [OpConst (IntConst 
 emitSub Tail (SCall (LId lid :-: _ty) ops) = return $ emitArgs [] ops ++ [Br rlr lid]
 emitSub (NonTail Nothing) (SCall (LId lid :-: _ty) ops) = return $ emitArgs [] ops ++ [Bsr rlr lid]
 emitSub (NonTail Nothing) _ = return [] -- if not SCall there is no side-effect.
-emitSub (NonTail (Just (VId nm))) o@(SCall (LId lid :-: ty) ops)
+emitSub (NonTail (Just (VId nm))) o@(SCall (LId lid :-: _ty) ops)
   | typeOfOp o == TFloat =
   let q = emitArgs [] ops in
   return $ q ++ [Bsr rlr lid] ++ fmov (FReg 0) (fregOfString nm)
-emitSub (NonTail (Just (VId nm))) (SCall (LId lid :-: ty) ops) =
+emitSub (NonTail (Just (VId nm))) (SCall (LId lid :-: _ty) ops) =
   let q = emitArgs [] ops in
   return $ q ++ [Bsr rlr lid] ++ cp "$0" nm
 -- SId
-emitSub (NonTail (Just (VId nm))) o@(SId (OpVar (VId src :-: ty)))
-  | typeOfOp o == TFloat =
-    return $ fmov (fregOfString src) (fregOfString nm)
 emitSub (NonTail (Just (VId nm))) (SId (OpVar (VId src :-: ty))) =
-    return $ cp src nm
+  case ty of
+    TFloat -> return $ fmov (fregOfString src) (fregOfString nm)
+    _      -> return $ cp src nm
 emitSub (NonTail (Just (VId nm))) (SId (OpConst cnst)) =
     case cnst of
       IntConst x   -> return $ li32 (fromIntegral x) (regOfString nm)
-      FloatConst x -> return $ lfi (fromRational (toRational x)) (fregOfString nm)
+      FloatConst x -> return $ lfi (realToFrac x) (fregOfString nm)
       UnitConst    -> return []
 -- Arithmetic operations
 emitSub (NonTail (Just (VId nm))) (SArithBin aop (OpVar (VId src :-: _ty)) o2@(OpVar (VId _src2 :-: _ty2))) =
@@ -104,7 +106,7 @@ emitSub (NonTail (Just (VId nm))) (SArithBin aop (OpVar (VId src :-: _ty)) o2@(O
         Mul -> undefined
         Div -> undefined
   in return [ctor (regOfString src) (regimmOfOperand o2) (regOfString nm)]
-emitSub (NonTail (Just (VId nm))) (SArithBin aop (OpVar (VId src :-: ty)) (OpConst (IntConst imm))) =
+emitSub (NonTail (Just (VId nm))) (SArithBin aop (OpVar (VId src :-: _)) (OpConst (IntConst imm))) =
   let val = case aop of
         Add -> imm
         Sub -> - imm
@@ -112,9 +114,12 @@ emitSub (NonTail (Just (VId nm))) (SArithBin aop (OpVar (VId src :-: ty)) (OpCon
         Div -> undefined
   in return $ abstAdd (regOfString src) (fromIntegral val) (regOfString nm)
 -- Negation (-x)
-emitSub (NonTail (Just (VId nm))) (SNeg o@(OpVar (VId src :-: ty))) =
-  return $ [Subl (Reg 31) (regimmOfOperand o) (regOfString nm)]
-
+emitSub (NonTail (Just (VId nm))) (SNeg o@(OpVar (VId _ :-: _))) =
+  return [Subl (Reg 31) (regimmOfOperand o) (regOfString nm)]
+emitSub (NonTail (Just (VId nm))) (SNeg (OpConst cval)) =
+  case cval of
+    IntConst i -> emitSub (NonTail (Just (VId nm))) (SId (OpConst (IntConst (- i))))
+    _          -> error $ "SNeg for non-int constant: " ++ show cval 
 -- float binary operation
 emitSub (NonTail (Just (VId nm))) (SFloatBin bop (OpVar (VId src1 :-: _)) (OpVar (VId src2 :-: _))) =
   let ctor = case bop of
@@ -131,7 +136,7 @@ emitSub (NonTail (Just (VId nm))) (SFloatBin bop (OpVar (VId src1 :-: _)) (OpCon
         FMul -> FOpMul
         FDiv -> undefined
   in
-    return $ lfi (fromRational (toRational fv)) frtmp ++ [FOp ctor (fregOfString src1) frtmp (fregOfString nm)]
+    return $ lfi (realToFrac fv) frtmp ++ [FOp ctor (fregOfString src1) frtmp (fregOfString nm)]
 emitSub (NonTail (Just (VId nm))) (SFloatBin bop (OpConst (FloatConst fv)) (OpVar (VId src2 :-: _))) =
   let ctor = case bop of
         FAdd -> FOpAdd
@@ -139,7 +144,7 @@ emitSub (NonTail (Just (VId nm))) (SFloatBin bop (OpConst (FloatConst fv)) (OpVa
         FMul -> FOpMul
         FDiv -> undefined
   in
-    return $ lfi (fromRational (toRational fv)) frtmp ++ [FOp ctor frtmp (fregOfString src2) (fregOfString nm)]
+    return $ lfi (realToFrac fv) frtmp ++ [FOp ctor frtmp (fregOfString src2) (fregOfString nm)]
 -- float comparison
 emitSub (NonTail (Just (VId nm))) (SCmpBin cop o@(OpVar (VId src1 :-: _)) (OpVar (VId src2 :-: _)))
   | getType o == TFloat =
@@ -149,26 +154,26 @@ emitSub (NonTail (Just (VId nm))) (SCmpBin cop o@(OpVar (VId src1 :-: _)) (OpVar
   in
     return $ [Cmps ctor (fregOfString src1) (fregOfString src2) (fregOfString nm)] -- TODO nm is integral register
 -- integer comparison
-emitSub (NonTail (Just (VId nm))) (SCmpBin cop (OpVar (VId src :-: ty)) op2) =
+emitSub (NonTail (Just (VId nm))) (SCmpBin cop (OpVar (VId src :-: _)) op2) =
   let ctor = case cop of
         Syntax.Eq -> CEQ
         Syntax.LE -> CLE
   in
     return $ [Inst.Cmp ctor (regOfString src) (regimmOfOperand op2) (regOfString nm)]
-emitSub (NonTail (Just (VId nm))) (SCmpBin Syntax.Eq op1 (OpVar (VId src :-: ty))) =
+emitSub (NonTail (Just (VId nm))) (SCmpBin Syntax.Eq op1 (OpVar (VId src :-: _))) =
   return $ [Inst.Cmp CEQ (regOfString src) (regimmOfOperand op1) (regOfString nm)]
-emitSub (NonTail (Just (VId nm))) (SCmpBin Syntax.LE op1 (OpVar (VId src :-: ty))) =
-  let retReg = (regOfString nm) in
-  return $ [ Inst.Cmp CLT (regOfString src) (regimmOfOperand op1) retReg
-  ] ++ abstAdd retReg (-1) retReg
-  
-emitSub Tail exp@(SId op) = emitSub (NonTail (Just (retReg (getType op)))) exp
-emitSub Tail exp@(SArithBin {}) = emitSub (NonTail (Just (retReg TInt))) exp
-emitSub Tail exp@(SCmpBin {}) = emitSub (NonTail (Just (retReg TInt))) exp
-emitSub Tail exp@(SFNeg {}) = emitSub (NonTail (Just (retReg TFloat))) exp
-emitSub Tail exp@(SFloatBin {}) = emitSub (NonTail (Just (retReg TFloat))) exp
-emitSub Tail exp@(SNeg {}) = emitSub (NonTail (Just (retReg TInt))) exp
-emitSub (NonTail x) y = error $ "undefined behavior in emitSub: " ++ show y 
+emitSub (NonTail (Just (VId nm))) (SCmpBin Syntax.LE op1 (OpVar (VId src :-: _))) =
+  let condReg = regOfString nm in
+  return $ [ Inst.Cmp CLT (regOfString src) (regimmOfOperand op1) condReg
+  ] ++ abstAdd condReg (-1) condReg
+
+emitSub Tail e@(SId op) = emitSub (NonTail (Just (retReg (getType op)))) e
+emitSub Tail e@(SArithBin {}) = emitSub (NonTail (Just (retReg TInt))) e
+emitSub Tail e@(SCmpBin {}) = emitSub (NonTail (Just (retReg TInt))) e
+emitSub Tail e@(SFNeg {}) = emitSub (NonTail (Just (retReg TFloat))) e
+emitSub Tail e@(SFloatBin {}) = emitSub (NonTail (Just (retReg TFloat))) e
+emitSub Tail e@(SNeg {}) = emitSub (NonTail (Just (retReg TInt))) e
+emitSub (NonTail _x) y = error $ "undefined behavior in emitSub: " ++ show y 
 
 emitParCopy :: ParCopy -> [ZekInst]
 emitParCopy (ParCopy var col) =
@@ -207,13 +212,13 @@ cp src dest = mov (regOfString src) (regOfString dest)
 emitArgs :: [(Reg, Reg)] -> [Operand] -> [ZekInst]
 emitArgs x_reg_cl ops =
   let (ys, zs) = List.partition (\x -> getType x /= TFloat) ops in
-  let (i, yrs) = List.foldl'
+  let (_, yrs) = List.foldl'
         (\(i, yrs) y -> (i + 1, (y, OpVar (VId (show (Reg i)) :-: getType y)) : yrs))
         (0, map (\(x, reg_cl) -> (operandOfReg x, operandOfReg reg_cl)) x_reg_cl) ys in
   let gprs = List.concatMap
         (\ (y, r) -> movOperand y r)
         (shuffle (operandOfReg rtmp) yrs) in
-  let (d, zfrs) = List.foldl'
+  let (_, zfrs) = List.foldl'
         (\(d, zfrs) z -> (d + 1, (z, OpVar (VId (show (FReg d)) :-: getType z)) : zfrs))
         (0, []) zs in
   let fregs = List.concatMap
@@ -234,18 +239,18 @@ emitArgs x_reg_cl ops =
 {- 関数呼び出しのために引数を並べ替える (register shuffling) -}
 shuffle :: Operand -> [(Operand, Operand)] -> [(Operand, Operand)]
 shuffle sw xys =
-  let (xys0, imm) = List.partition (\ (x, y) -> case y of { OpVar {} -> True; _ -> False; }) xys in
+  let (xys0, imm) = List.partition (\ (_, y) -> case y of { OpVar {} -> True; _ -> False; }) xys in
   {- remove identical moves -}
   let xys1 = List.filter (\ (x, y) -> x /= y) xys0 in
   {- find acyclic moves -}
   let sub1 = case List.partition (\ (_, y) -> List.lookup y xys1 /= Nothing) xys1 of
             ([], []) -> []
-            ((x, y) : xys, []) -> {- no acyclic moves; resolve a cyclic move -}
+            ((x, y) : xys_rest, []) -> {- no acyclic moves; resolve a cyclic move -}
                 (y, sw) : (x, y) :
                   shuffle sw (List.map (\e -> case e of
                                     (y', z) | y == y' -> (sw, z)
-                                    yz -> yz) xys)
-            (xys, acyc) -> acyc ++ shuffle sw xys
+                                    yz -> yz) xys_rest)
+            (xys', acyc) -> acyc ++ shuffle sw xys'
   in sub1 ++ imm
 
 
