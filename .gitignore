@@ -8,6 +8,7 @@ cabal.sandbox.config
 dist/
 *.out
 *.s
+*.err
 sample/*.x
 build/
 *.html
@@ -15,4 +16,4 @@ haddock-util.js
 *.png
 *.gif
 *.css
-
+converter

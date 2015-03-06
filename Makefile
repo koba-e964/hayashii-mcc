@@ -39,8 +39,6 @@ clean :
 	$(ASM) $*.s -o $*.x >/dev/null
 %-main.s: %-lib.ml %-main.ml $(CMP) $(LIB)
 	$(CMP) $(MCCFLAGS) $(STDLIB) -glib $*-lib $*-main
-min-caml/min-caml:
-	$(MAKE) -C min-caml -f Makefile.zek min-caml
 $(CMP): 
 	cabal install
 $(ASM): Zekamashi
@@ -50,4 +48,7 @@ Zekamashi/sim/amatsukaze:
 	$(MAKE) -C Zekamashi/sim
 $(EXEC): Zekamashi/sim/amatsukaze
 	cp Zekamashi/sim/amatsukaze $(EXEC)
+converter: converter.c
+	gcc $< -o $@
+
 
