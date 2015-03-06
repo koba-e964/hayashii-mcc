@@ -6,7 +6,6 @@ import Data.Set (Set, difference, union)
 import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Debug.Trace (trace)
 
 import Id (CounterT, Id(Id), runCounterT)
 import qualified Id
@@ -132,7 +131,7 @@ kNormalSub env expr = case expr of
   App (Var f) e2s | Map.notMember f env -> do
     maybeTy <- asks (Map.lookup f)
     case maybeTy of
-      Just (TFun _ t) -> 
+      Just (TFun _ t) -> -- f is in extenv.
         let bind xs ls = case ls of
               [] -> return (KExtFunApp f xs :-: t)
               e2 : rest -> do
@@ -142,7 +141,7 @@ kNormalSub env expr = case expr of
       _ -> error "error 138-30"
   App e1 e2s -> do
       result <- kNormalSub env e1
-      trace ("result = " ++ show result) $ case result of
+      case result of
         g_e1@(_ :-: TFun _ t) ->
           insertLet g_e1
             (\f ->

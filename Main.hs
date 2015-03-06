@@ -78,7 +78,7 @@ repl conf str = do
       let al = alpha kn
       let (cexp, cfuns) = trans al
       let ssa = runReader (runCounterT (ssaTrans cfuns cexp))
-            (Map.fromList (map (\(CFundef {Closure.name = (VId n,ty)}) -> (Id n, ty)) cfuns) `Map.union` extenv)
+            (Map.fromList (map (\(CFundef {Closure.name = (VId n,ty)}) -> (Id n, ty)) cfuns ++ [(Id ("min_caml_" ++ x), ty) | (Id x, ty) <- Map.assocs extenv]))
       putStrLn "ssa:"
       print ssa
       putStrLn "**** optimized SSA ****"
