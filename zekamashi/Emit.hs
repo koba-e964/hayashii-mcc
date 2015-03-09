@@ -91,13 +91,21 @@ emitSub (NonTail Nothing) (SCall (LId lid :-: _ty) ops st) =
     [Bsr rlr lid] ++
     [Lda rsp (- (st + length regs)) rsp] ++
     restoreRegs ris
-  where regs = AsmHelper.gregs ++ [rlr]
+  where regs = map show (AsmHelper.gregs ++ [rlr]) ++ map show (AsmHelper.fregs)
         ris = zip regs [st..]
 emitSub (NonTail Nothing) _ = return [] -- if not SCall there is no side-effect.
 emitSub (NonTail (Just (VId nm))) o@(SCall (LId lid :-: _ty) ops st)
   | typeOfOp o == TFloat =
   let q = emitArgs [] ops in
-  return $ q ++ [Bsr rlr lid] ++ fmov (FReg 0) (fregOfString nm)
+  return $ 
+    saveRegs ris ++
+    q ++
+    [Lda rsp (st + length regs) rsp] ++
+    [Bsr rlr lid] ++ fmov (FReg 0) (fregOfString nm) ++
+    [Lda rsp (- (st + length regs)) rsp] ++
+    restoreRegs (filter (\(a, _) -> a /= nm) ris)
+  where regs = map show (AsmHelper.gregs ++ [rlr]) ++ map show (AsmHelper.fregs)
+        ris = zip regs [st..]
 emitSub (NonTail (Just (VId nm))) (SCall (LId lid :-: _ty) ops st) =
   let q = emitArgs [] ops in
   return $
@@ -106,8 +114,8 @@ emitSub (NonTail (Just (VId nm))) (SCall (LId lid :-: _ty) ops st) =
     [Lda rsp (st + length regs) rsp] ++
     [Bsr rlr lid] ++ cp "$0" nm ++
     [Lda rsp (- (st + length regs)) rsp] ++
-    restoreRegs (filter (\(a, _) -> a /= regOfString nm) ris)
-  where regs = AsmHelper.gregs ++ [rlr]
+    restoreRegs (filter (\(a, _) -> a /= nm) ris)
+  where regs = map show (AsmHelper.gregs ++ [rlr]) ++ map show (AsmHelper.fregs)
         ris = zip regs [st..]
 -- SId
 emitSub (NonTail (Just (VId nm))) (SId (OpVar (VId src :-: ty))) =
@@ -303,7 +311,7 @@ operandOfReg x = OpVar (VId (show x) :-: TInt)
 movOperand :: Operand -> Operand -> [ZekInst]
 movOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = mov (regOfString a) (regOfString b)
 movOperand (OpConst (IntConst v)) (OpVar (b :-: _)) = li32 (fromIntegral v) (regOfString b)
-movOperand (OpConst UnitConst) (OpVar (b :-: _)) = []
+movOperand (OpConst UnitConst) (OpVar (_ :-: _)) = []
 movOperand x y = error $ "movOperand: invalid arguments: " ++ show x ++ ", " ++ show y
 
 fmovOperand :: Operand -> Operand -> [ZekInst]
@@ -311,9 +319,22 @@ fmovOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = fmov (fregOfString a) (fregOfS
 fmovOperand (OpConst (FloatConst v)) (OpVar (b :-: _)) = lfi (realToFrac v) (fregOfString b)
 fmovOperand x y = error $ "fmovOperand: invalid arguments: " ++ show x ++ ", " ++ show y
 
-saveRegs :: [(Reg, Int)] -> [ZekInst]
-saveRegs regPls = map (\(x, y) -> Stl x y rsp) regPls
 
-restoreRegs :: [(Reg, Int)] -> [ZekInst]
-restoreRegs regPls = map (\(x, y) -> Ldl x y rsp) regPls
+strToReg :: (Eq s, IsString s, Show s) => s -> Either Reg FReg
+strToReg str = case List.elemIndex str [fromString $ "$" ++ show i | i <- [0..31 :: Int]] of
+  Just r  -> Left $ Reg r
+  Nothing -> Right $ fregOfString str
+
+
+saveRegs :: [(String, Int)] -> [ZekInst]
+saveRegs = map f where
+  f (x, y) = case strToReg x of
+    Left p -> Stl p y rsp
+    Right p -> Sts p y rsp
+
+restoreRegs :: [(String, Int)] -> [ZekInst]
+restoreRegs = map f where
+  f (x, y) = case strToReg x of
+    Left p -> Ldl p y rsp
+    Right p -> Lds p y rsp
 
