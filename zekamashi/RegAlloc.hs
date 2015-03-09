@@ -124,8 +124,9 @@ replaceOp op = do
       SFNeg <$> replaceOperand x
     SFloatBin operator x y ->
       SFloatBin operator <$> replaceOperand x <*> replaceOperand y
-    SCall lid operands ->
-      SCall lid <$> mapM replaceOperand operands
+    SCall lid operands _ -> do
+      q <- gets stackId
+      SCall lid <$> mapM replaceOperand operands <*> return (q + 1)
 
 replaceOperand op = case op of
   OpConst _ -> return op
@@ -171,10 +172,10 @@ spillVarSub vidty@(vid@(VId nm) :-: ty) loc (Block blk phi insts term) = do
       return [inst]
   return $ Block blk phi newinsts term
 storeVar :: Typed VId -> Int -> Inst
-storeVar (vid :-: ty) loc = Inst Nothing $ SCall (LId "@store" :-: TFun [ty, TInt] TUnit) [OpVar (vid :-: ty), ci32 loc]
+storeVar (vid :-: ty) loc = Inst Nothing $ SCall (LId "@store" :-: TFun [ty, TInt] TUnit) [OpVar (vid :-: ty), ci32 loc] 0
 
 loadVar :: Typed VId -> Int -> Inst
-loadVar (vid :-: ty) loc = Inst (Just vid) $ SCall (LId "@load" :-: TFun [TInt] ty) [ci32 loc]
+loadVar (vid :-: ty) loc = Inst (Just vid) $ SCall (LId "@load" :-: TFun [TInt] ty) [ci32 loc] 0
 
 freshId :: M Int
 freshId = do

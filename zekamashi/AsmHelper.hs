@@ -29,6 +29,12 @@ rsp :: Reg
 -- | Register for temporary floating-point values.
 frtmp :: FReg
 
+-- | Set of GPRs.
+gregs :: [Reg]
+
+-- | Set of floating-point registers.
+fregs :: [FReg]
+
 rcl = Reg 25
 rtmp2 = Reg 26
 rhp = Reg 27
@@ -36,4 +42,7 @@ rtmp = Reg 28
 rlr = Reg 29
 rsp = Reg 30
 frtmp = FReg 30
+
+gregs = [ Reg i | i <- [0 .. 24] ++ [26]]
+fregs = [ FReg i | i <- [0 .. 30]]
 

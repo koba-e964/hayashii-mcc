@@ -76,7 +76,7 @@ data Op =
   | SCmpBin !CmpOp !Operand !Operand
   | SNeg !Operand
   | SFNeg !Operand
-  | SCall !(Typed LId) ![Operand]
+  | SCall !(Typed LId) ![Operand] !Int {- stack consumption -}
   deriving (Eq, Show)
 data Term =
   TRet !Operand
@@ -184,7 +184,7 @@ getOperand (expr :-: ty) = case expr of
     argsId <- forM args_ $ \vx -> do
       vty <- lookupTypeInfo vx
       return (OpVar (vx :-: vty))
-    addInst $ Inst (Just fresh) $ SCall (LId funname :-: TFun (clsType : argType) retType)  (clsId : argsId)
+    addInst $ Inst (Just fresh) $ SCall (LId funname :-: TFun (clsType : argType) retType)  (clsId : argsId) 0
     return (OpVar (fresh :-: retType))
   CAppDir fun@(LId funname) args_ -> do
     funType@(TFun _ retType) <-
@@ -197,7 +197,7 @@ getOperand (expr :-: ty) = case expr of
     argsId <- forM args_ $ \vx -> do
       vty <- lookupTypeInfo vx
       return (OpVar (vx :-: vty))
-    addInst $ Inst (Just fresh) $ SCall (fun :-: funType) argsId
+    addInst $ Inst (Just fresh) $ SCall (fun :-: funType) argsId 0
     return (OpVar (fresh :-: retType))
   CTuple elems -> do
     let TTuple elemTy = ty
@@ -205,7 +205,7 @@ getOperand (expr :-: ty) = case expr of
     let funType = TFun [TInt] retType
     let size = 4 * length elems {- TODO This code assumes that sizeof int, float, ptr are all 4. -}
     fresh <- freshVar retType
-    addInst $ Inst (Just fresh) $ SCall (LId "malloc" :-: funType) [ci32 size]
+    addInst $ Inst (Just fresh) $ SCall (LId "malloc" :-: funType) [ci32 size] 0
     forM_ [0 .. length elems - 1] $ \i -> do
       let (argid, argty) = zip elems elemTy !! i
       arrayPut (OpVar (fresh :-: retType)) (ci32 (4 * i)) (OpVar (argid :-: argty))
@@ -213,7 +213,7 @@ getOperand (expr :-: ty) = case expr of
   CLetTuple elems tuple e -> do
     forM_ [0 .. length elems - 1] $ \i -> do
       let (argid, argTy) = elems !! i
-      addInst $ Inst (Just argid) $ SCall (LId "array_get" :-: TFun [TArray TUnit, TInt] argTy) [OpVar (tuple :-: TArray TUnit), ci32 (4 * i)] {- TODO This code assumes that sizeof int, float, ptr are all 4. -}
+      addInst $ Inst (Just argid) $ SCall (LId "array_get" :-: TFun [TArray TUnit, TInt] argTy) [OpVar (tuple :-: TArray TUnit), ci32 (4 * i)] 0 {- TODO This code assumes that sizeof int, float, ptr are all 4. -}
     getOperand e
   CGet x y -> do
     xty <- lookupTypeInfo x
@@ -240,13 +240,13 @@ ci32 i = OpConst (IntConst (fromIntegral i))
 arrayPut :: MonadState CgenState m => Operand -> Operand -> Operand -> m ()
 arrayPut aryOp idxOp elemOp =
   addInst $ Inst Nothing $ SCall (LId "array_put" :-: TFun [getType aryOp, TInt, getType elemOp] TUnit)
-    [aryOp, idxOp, elemOp]
+    [aryOp, idxOp, elemOp] 0
 arrayGet :: Operand -> Operand -> StateT CgenState M Operand
 arrayGet aryOp idxOp = do
   let aryTy@(TArray elemTy) = getType aryOp
   fresh <- freshVar　elemTy
   addInst $ Inst (Just fresh) $ SCall (LId "array_get" :-: TFun [aryTy, TInt] elemTy)
-    [aryOp, idxOp]
+    [aryOp, idxOp] 0
   return (OpVar (fresh :-: elemTy))
 
 emptyPhi :: Phi
@@ -323,7 +323,7 @@ typeOfOp e = case e of
   SCmpBin _ o1 _ -> getType o1
   SNeg {} -> TInt
   SFNeg {} -> TFloat
-  SCall (_ :-: TFun _ retTy) _ -> retTy
+  SCall (_ :-: TFun _ retTy) _ _ -> retTy
   _ -> error $ "not a valid Op: " ++ show e
 
 mapEndoBlock :: (Block -> Block) -> SSAFundef -> SSAFundef
@@ -360,7 +360,7 @@ fvOp op = case op of
   SArithBin _ x y -> fvOperand x ++ fvOperand y
   SCmpBin _ x y -> fvOperand x ++ fvOperand y
   SFloatBin _ x y -> fvOperand x ++ fvOperand y
-  SCall _ args_ -> concatMap fvOperand args_
+  SCall _ args_ _ -> concatMap fvOperand args_
 
 fvTerm :: Term -> [VId]
 fvTerm (TRet op) = fvOperand op

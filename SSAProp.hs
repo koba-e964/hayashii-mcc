@@ -50,8 +50,8 @@ propInst (Inst dest op) = do
       return $ SFNeg (prop env x)
     SFloatBin operator x y ->
       return $ SFloatBin operator (prop env x) (prop env y)
-    SCall lid operands ->
-      return $ SCall lid (map (prop env) operands)
+    SCall lid operands x ->
+      return $ SCall lid (map (prop env) operands) x
   when (typeOfOp op == TUnit) $ do
     case dest of
       Nothing -> return ()

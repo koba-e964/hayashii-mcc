@@ -26,7 +26,7 @@ genOp e = case e of
   SCmpBin _ o1 o2 -> genOperand o1 `union` genOperand o2
   SNeg o -> genOperand o
   SFNeg o -> genOperand o
-  SCall _ ls -> unions (map genOperand ls)
+  SCall _ ls _ -> unions (map genOperand ls)
 
 genOperand :: Operand -> Set VId
 genOperand (OpVar (v :-: _)) = Set.singleton v

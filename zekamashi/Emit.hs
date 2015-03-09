@@ -26,9 +26,10 @@ data TailInfo = Tail | NonTail !(Maybe VId)
 emit :: [SSAFundef] -> [ZekInst]
 emit fundefs = runM $ do
   sub <- fmap concat $ mapM emitFundef fundefs
+  let prologue = li32 0x3000 rsp ++ li32 0x7000 rhp
   let endLabel = "min_caml_end"
   let epilogue = [ExtFile "zekamashi/libmincaml.txt", Label endLabel, Br rtmp endLabel]
-  return $ [Bsr rlr "main", Br rtmp endLabel] ++ sub ++ epilogue
+  return $ prologue ++ [Bsr rlr "main", Br rtmp endLabel] ++ sub ++ epilogue
 
 
 emitFundef :: SSAFundef -> M [ZekInst]
@@ -56,7 +57,8 @@ emitTerm _ (TRet v) = do
   return $ sub ++ [Ret rtmp rlr]
 emitTerm blkFrom (TJmp blkTo) = do
   pc <- findPhiCopy blkFrom blkTo
-  return $ emitParCopy pc ++ [Br rtmp blkTo]
+  l1 <- freshLabel blkTo
+  return $ emitParCopy pc ++ [Br rtmp l1]
 emitTerm blkFrom (TBr (OpVar (VId src :-: _ty)) blk1 blk2)
   = do
   l1 <- freshLabel blk1
@@ -75,21 +77,36 @@ emitTerm blkFrom (TBr (OpVar (VId src :-: _ty)) blk1 blk2)
 
 -- | Emit code corresponding to the given Op.
 emitSub :: TailInfo -> Op -> M [ZekInst]
-emitSub _ (SCall (LId "@store" :-: _) [OpVar (VId v :-: _), OpConst (IntConst i)]) =
+emitSub _ (SCall (LId "@store" :-: _) [OpVar (VId v :-: _), OpConst (IntConst i)] _) =
   return [Stl (regOfString v) (fromIntegral i) rsp] 
-emitSub (NonTail (Just (VId nm))) (SCall (LId "@load" :-: _) [OpConst (IntConst i)]) =
-  return [Ldl (regOfString nm) (fromIntegral i) rsp] 
+emitSub (NonTail (Just (VId nm))) (SCall (LId "@load" :-: _) [OpConst (IntConst i)] _) =
+  return [Ldl (regOfString nm) (fromIntegral i) rsp]
 -- function call (tailcall/call with no result)
-emitSub Tail (SCall (LId lid :-: _ty) ops) = return $ emitArgs [] ops ++ [Br rlr lid]
-emitSub (NonTail Nothing) (SCall (LId lid :-: _ty) ops) = return $ emitArgs [] ops ++ [Bsr rlr lid]
+emitSub Tail (SCall (LId lid :-: _ty) ops _) = return $ emitArgs [] ops ++ [Br rlr lid]
+emitSub (NonTail Nothing) (SCall (LId lid :-: _ty) ops st) =
+  return $ emitArgs [] ops ++ 
+    saveRegs ris ++
+    [Lda rsp (st + length regs) rsp] ++
+    [Bsr rlr lid] ++
+    [Lda rsp (- (st + length regs)) rsp] ++
+    restoreRegs ris
+  where regs = AsmHelper.gregs ++ [rlr]
+        ris = zip regs [st..]
 emitSub (NonTail Nothing) _ = return [] -- if not SCall there is no side-effect.
-emitSub (NonTail (Just (VId nm))) o@(SCall (LId lid :-: _ty) ops)
+emitSub (NonTail (Just (VId nm))) o@(SCall (LId lid :-: _ty) ops st)
   | typeOfOp o == TFloat =
   let q = emitArgs [] ops in
   return $ q ++ [Bsr rlr lid] ++ fmov (FReg 0) (fregOfString nm)
-emitSub (NonTail (Just (VId nm))) (SCall (LId lid :-: _ty) ops) =
+emitSub (NonTail (Just (VId nm))) (SCall (LId lid :-: _ty) ops st) =
   let q = emitArgs [] ops in
-  return $ q ++ [Bsr rlr lid] ++ cp "$0" nm
+  return $ q ++
+    saveRegs ris ++
+    [Lda rsp (st + length regs) rsp] ++
+    [Bsr rlr lid] ++ cp "$0" nm ++
+    [Lda rsp (- (st + length regs)) rsp] ++
+    restoreRegs (filter (\(a, _) -> a /= regOfString nm) ris)
+  where regs = AsmHelper.gregs ++ [rlr]
+        ris = zip regs [st..]
 -- SId
 emitSub (NonTail (Just (VId nm))) (SId (OpVar (VId src :-: ty))) =
   case ty of
@@ -291,4 +308,10 @@ fmovOperand :: Operand -> Operand -> [ZekInst]
 fmovOperand (OpVar (a :-: _)) (OpVar (b :-: _)) = fmov (fregOfString a) (fregOfString b)
 fmovOperand (OpConst (FloatConst v)) (OpVar (b :-: _)) = lfi (realToFrac v) (fregOfString b)
 fmovOperand x y = error $ "fmovOperand: invalid arguments: " ++ show x ++ ", " ++ show y
+
+saveRegs :: [(Reg, Int)] -> [ZekInst]
+saveRegs regPls = map (\(x, y) -> Stl x y rsp) regPls
+
+restoreRegs :: [(Reg, Int)] -> [ZekInst]
+restoreRegs regPls = map (\(x, y) -> Ldl x y rsp) regPls
 

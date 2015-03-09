@@ -66,7 +66,7 @@ replaceOp env op = case op of
   SCmpBin o x y -> SCmpBin o (replaceOperand env x) (replaceOperand env y)
   SNeg x -> SNeg (replaceOperand env x)
   SFNeg x -> SFNeg (replaceOperand env x)
-  SCall lid argv -> SCall lid (map (replaceOperand env) argv)
+  SCall lid argv x -> SCall lid (map (replaceOperand env) argv) x
 
 replaceTerm :: Map.Map VId VId -> Term -> Term
 replaceTerm env term = case term of
