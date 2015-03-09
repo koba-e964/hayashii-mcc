@@ -17,7 +17,7 @@ sample/shuffle.ml sample/spill.ml sample/spill2.ml sample/spill3.ml sample/sum-t
 #sample/cls-bug.ml sample/cls-bug2.ml sample/cls-rec.ml \
 #sample/matmul.ml 
 .PHONY: test_all clean
-test_all : $(SAMPLES:%.ml=%.x)
+test_all : $(SAMPLES:%.ml=%.test)
 
 %.s : %.ml $(CMP)
 	LANG=C.UTF-8 $(CMP) -o $*.s <$*.ml >$*.out

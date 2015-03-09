@@ -84,8 +84,9 @@ emitSub (NonTail (Just (VId nm))) (SCall (LId "@load" :-: _) [OpConst (IntConst 
 -- function call (tailcall/call with no result)
 emitSub Tail (SCall (LId lid :-: _ty) ops _) = return $ emitArgs [] ops ++ [Br rlr lid]
 emitSub (NonTail Nothing) (SCall (LId lid :-: _ty) ops st) =
-  return $ emitArgs [] ops ++ 
+  return $ 
     saveRegs ris ++
+    emitArgs [] ops ++
     [Lda rsp (st + length regs) rsp] ++
     [Bsr rlr lid] ++
     [Lda rsp (- (st + length regs)) rsp] ++
@@ -99,8 +100,9 @@ emitSub (NonTail (Just (VId nm))) o@(SCall (LId lid :-: _ty) ops st)
   return $ q ++ [Bsr rlr lid] ++ fmov (FReg 0) (fregOfString nm)
 emitSub (NonTail (Just (VId nm))) (SCall (LId lid :-: _ty) ops st) =
   let q = emitArgs [] ops in
-  return $ q ++
+  return $
     saveRegs ris ++
+    q ++
     [Lda rsp (st + length regs) rsp] ++
     [Bsr rlr lid] ++ cp "$0" nm ++
     [Lda rsp (- (st + length regs)) rsp] ++
