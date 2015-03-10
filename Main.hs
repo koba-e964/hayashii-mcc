@@ -22,11 +22,14 @@ import SSACSE
 import SSASimpl
 import SSAElim
 import Closure (CVardef, CFundef(..), trans)
+import Virtual
+{-
 import RegAlloc
 import PhiElim
 import Emit
 import qualified Inst
 import SSADom
+-}
 
 data Config = Config { threshold :: !Int, limit :: !Int, glib :: ![String], outFile :: !(Maybe String) }
 
@@ -84,6 +87,10 @@ repl conf str = do
       putStrLn "**** optimized SSA ****"
       let optSSA = iterate (cse . eliminate . simplify . reduce . constFold . propagate) ssa !! 10
       print optSSA
+      putStrLn "**** virtual code ****"
+      let vCode = map virtualCode optSSA
+      mapM_ print vCode
+{-
       putStrLn "*** Dominance ***"
       forM_ (map dominance optSSA) $ \x -> do
         print x
@@ -100,6 +107,7 @@ repl conf str = do
           handle <- openFile x WriteMode
           Inst.emit handle insts
           hClose handle
+-}
     Left x -> error x
 
 processLib :: [String] -> IO (TypeEnv, [CVardef])

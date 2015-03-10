@@ -159,4 +159,12 @@ min_caml_bits_of_float:
 min_caml_float_of_bits:
 	ITOFS $0, $f0
 	RET $28, ($29)
+min_caml_abs_float:
+	CMPSLE $f0, $f31, $f1 # f0 <= 0 ?
+	FBNE $f1, maf_neg
+	RET $28, ($29)
+maf_neg:
+	SUBS $f31, $f0, $f0
+	RET $28, ($29)
+
 

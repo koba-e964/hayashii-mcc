@@ -18,33 +18,6 @@ instance Show RegImm where
     RIReg i -> "$" ++ show i
     RIImm i -> show i
 
-data FOp = FOpAdd | FOpSub | FOpMul | FOpDiv deriving (Eq)
-type Disp16 = Int
-type Label = String
-data Cond = EQ | NE | GE | LE deriving (Eq)
-
-data Cmp = CEQ | CLE | CLT deriving (Eq)
-
-instance Show FOp where
-  show e = case e of
-    FOpAdd -> "ADDS"
-    FOpSub -> "SUBS"
-    FOpMul -> "MULS"
-    FOpDiv -> error "invalid float instruction: fdiv"
-
-instance Show Cond where
-  show e = case e of
-    EQ -> "BEQ"
-    NE -> "BNE"
-    GE -> "BGE"
-    LE -> "BLE"
-
-instance Show Cmp where
-  show e = case e of
-    CEQ -> "EQ"
-    CLE -> "LE"
-    CLT -> "LT"
-
 data ZekInst
   = Lda !Reg !Disp16 !Reg
   | Ldah !Reg !Disp16 !Reg
