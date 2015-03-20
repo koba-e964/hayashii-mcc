@@ -20,6 +20,7 @@ import SSAFold
 import SSAReduce
 import SSACSE
 import SSASimpl
+import SSALoop
 import SSAElim
 import Closure (CVardef, CFundef(..), trans)
 import RegAlloc
@@ -82,7 +83,7 @@ repl conf str = do
       putStrLn "ssa:"
       print ssa
       putStrLn "**** optimized SSA ****"
-      let optSSA = iterate (cse . eliminate . simplify . reduce . constFold . propagate) ssa !! 10
+      let optSSA = iterate (map convertToLoop . cse . eliminate . simplify . reduce . constFold . propagate) ssa !! 10
       print optSSA
       putStrLn "*** Dominance ***"
       forM_ (map dominance optSSA) $ \x -> do
