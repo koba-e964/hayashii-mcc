@@ -390,3 +390,37 @@ getBlockByID SSAFundef { blocks = blks } blkID = head $ filter (\(Block bid _ _ 
 
 blockID :: Block -> BlockID
 blockID (Block b _ _ _) = b
+
+
+
+-- | Rename BlockID's in [Term].
+renameTerm :: (BlockID -> BlockID) -> Term -> Term
+renameTerm _f (TRet x) = TRet x
+renameTerm f (TJmp x) = TJmp (f x)
+renameTerm f (TBr x b1 b2) = TBr x (f b1) (f b2)
+
+-- | Rename BlockID's in columns of phi nodes.
+renameCols :: (BlockID -> BlockID) -> Map.Map BlockID [Operand] -> Map.Map BlockID [Operand]
+renameCols f cols = Map.mapKeys f cols
+
+-- | A type h which contains BlockID
+class HasBlockID h where
+  rename :: (BlockID -> BlockID) -> h -> h
+
+instance HasBlockID Term where
+  rename = renameTerm
+
+instance HasBlockID Phi where
+  rename f (Phi vars cols) = Phi vars (renameCols f cols)
+
+instance HasBlockID Block where
+  rename f (Block blkId phi insts term) = Block (f blkId) (rename f phi) insts (rename f term)
+
+instance HasBlockID SSAFundef where
+  rename f fundef@SSAFundef { blocks = blk } = fundef { blocks = map (rename f) blk }
+
+-- [freshString ss prefix] returns a [String] that has [prefix] as prefix and is not contained in [ss].
+freshString :: [String] -> String -> String
+freshString ss prefix = head $ filter (flip notElem ss) $ [prefix ++ "." ++ show i | i <- [0 .. ]]
+
+

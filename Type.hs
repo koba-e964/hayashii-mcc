@@ -36,3 +36,7 @@ data Typed a = a :-: Type deriving (Eq, Show)
 instance Functor Typed where
   fmap f (a :-: b) = f a :-: b
 
+
+unType :: Typed a -> a
+unType (x :-: _) = x
+
