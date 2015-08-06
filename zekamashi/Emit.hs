@@ -1,8 +1,10 @@
 module Emit where
 
+import Data.Maybe
 import Data.String
 import qualified Data.List as List
 import Control.Monad.State (State, gets, modify, evalState)
+import qualified Data.Set as Set
 import Control.Monad
 import Debug.Trace
 
@@ -55,7 +57,8 @@ emitBlock (LiveInfo live) (Block blkId _phi insts term) = do
   let len = length insts
   ii <- fmap concat $ forM [0 .. len - 1] $ \i -> do
     let InstLive lIn lOut = liveInsts !! i
-    modify $ \s -> s { liveRegs = ([], []) } -- TODO analyze necessary registers
+    let lOutMinusKill = lOut `Set.difference` killInst (insts !! i)
+    modify $ \s -> s { liveRegs = getRegsFromNames (Set.toList lOutMinusKill) } -- TODO analyze necessary registers
     emitInst (insts !! i)
   ti <- emitTerm blkId term
   return $ [Label lbl] ++ ii ++ ti
@@ -272,6 +275,7 @@ emitArgs x_reg_cl ops =
 -- GPR: $0 ~ $31 ($31 = 0)
 -- Float: $f0 ~ $f31
 
+
 {- 関数呼び出しのために引数を並べ替える (register shuffling) -}
 shuffle :: Operand -> [(Operand, Operand)] -> [(Operand, Operand)]
 shuffle sw xys =
@@ -298,6 +302,22 @@ fregOfString :: (Eq s, IsString s, Show s) => s -> FReg
 fregOfString s = case List.elemIndex s [fromString $ "$f" ++ show i | i <- [0..31 :: Int]] of
   Just r  -> FReg r
   Nothing -> error $ "Invalid register name:" ++ show s
+
+maybeRegOfString :: (Eq s, IsString s, Show s) => s -> Maybe Reg
+maybeRegOfString s = case List.elemIndex s [fromString $ "$" ++ show i | i <- [0..31 :: Int]] of
+  Just r  -> Just (Reg r)
+  Nothing -> Nothing
+
+maybeFregOfString :: (Eq s, IsString s, Show s) => s -> Maybe FReg
+maybeFregOfString s = case List.elemIndex s [fromString $ "$f" ++ show i | i <- [0..31 :: Int]] of
+  Just r  -> Just (FReg r)
+  Nothing -> Nothing
+
+
+getRegsFromNames :: [VId] -> ([Reg], [FReg])
+getRegsFromNames ls = 
+  (catMaybes (map maybeRegOfString ls), catMaybes (map maybeFregOfString ls))
+
 
 regimmOfOperand :: Operand -> RegImm
 regimmOfOperand (OpConst (IntConst x)) = RIImm (fromIntegral x)
