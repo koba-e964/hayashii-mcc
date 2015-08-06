@@ -3,6 +3,8 @@ module Emit where
 import Data.String
 import qualified Data.List as List
 import Control.Monad.State (State, gets, modify, evalState)
+import Control.Monad
+import Debug.Trace
 
 import Syntax
 import Id
@@ -10,15 +12,21 @@ import Type
 import Inst
 import SSA hiding (M)
 import AsmHelper
+import SSALiveness
 
 import qualified Data.Map as Map
 
-data Env = Env { labelMap :: !(Map.Map BlockID Label), blkIdx :: !Int, currentFunction :: !SSAFundef } 
+data Env = Env { labelMap :: !(Map.Map BlockID Label), blkIdx :: !Int, currentFunction :: !SSAFundef, liveRegs :: !([Reg], [FReg]) } 
 data ParCopy = ParCopy ![VId] ![Operand]
 
 type M = State Env
 runM :: M a -> a
-runM x = evalState x (Env Map.empty 0 (SSAFundef (LId "undefined><><><" :-: TUnit) [] [] []))
+runM x = evalState x Env
+  { labelMap = Map.empty
+  , blkIdx = 0
+  , currentFunction = SSAFundef (LId "undefined><><><" :-: TUnit) [] [] []
+  , liveRegs = ([], [])
+  }
 
 data TailInfo = Tail | NonTail !(Maybe VId)
 
@@ -35,14 +43,20 @@ emit fundefs = runM $ do
 emitFundef :: SSAFundef -> M [ZekInst]
 emitFundef fundef@(SSAFundef (LId nm :-: _ty) _params _formFV blks) = do
   modify $ \s -> s { currentFunction = fundef }
+  let live = analyzeLiveness fundef
   entryLabel <- freshLabel "entry"
-  res <- fmap concat $ mapM emitBlock blks
+  res <- fmap concat $ mapM (emitBlock live) blks
   return $ [Label nm, Br rtmp entryLabel] ++ res
 
-emitBlock :: Block -> M [ZekInst]
-emitBlock (Block blkId _phi insts term) = do
+emitBlock :: LiveInfo -> Block -> M [ZekInst]
+emitBlock (LiveInfo live) (Block blkId _phi insts term) = do
+  let BlockLive _ liveInsts _ = live Map.! blkId
   lbl <- freshLabel blkId
-  ii <- fmap concat $ mapM emitInst insts
+  let len = length insts
+  ii <- fmap concat $ forM [0 .. len - 1] $ \i -> do
+    let InstLive lIn lOut = liveInsts !! i
+    modify $ \s -> s { liveRegs = ([], []) } -- TODO analyze necessary registers
+    emitInst (insts !! i)
   ti <- emitTerm blkId term
   return $ [Label lbl] ++ ii ++ ti
 
@@ -73,6 +87,7 @@ emitTerm blkFrom (TBr (OpVar (VId src :-: _ty)) blk1 blk2)
     ] ++ emitParCopy pc1 ++
     [ Br rtmp l1
     ] {- Not confirmed -}
+emitTerm blkFrom (TBr (OpConst _) _ _) = error "should be removed in optimization"
 
 
 -- | Emit code corresponding to the given Op.
@@ -83,40 +98,37 @@ emitSub (NonTail (Just (VId nm))) (SCall (LId "@load" :-: _) [OpConst (IntConst 
   return [Ldl (regOfString nm) (fromIntegral i) rsp]
 -- function call (tailcall/call with no result)
 emitSub Tail (SCall (LId lid :-: _ty) ops _) = return $ emitArgs [] ops ++ [Br rlr lid]
-emitSub (NonTail Nothing) (SCall (LId lid :-: _ty) ops st) =
-  return $ 
+emitSub (NonTail Nothing) (SCall (LId lid :-: _ty) ops st) = do
+  ris <- getRegsFunction st
+  return $
     saveRegs ris ++
     emitArgs [] ops ++
-    [Lda rsp (st + length regs) rsp] ++
+    [Lda rsp (st + length ris) rsp] ++
     [Bsr rlr lid] ++
-    [Lda rsp (- (st + length regs)) rsp] ++
+    [Lda rsp (- (st + length ris)) rsp] ++
     restoreRegs ris
-  where regs = map show (AsmHelper.gregs ++ [rlr]) ++ map show (AsmHelper.fregs)
-        ris = zip regs [st..]
 emitSub (NonTail Nothing) _ = return [] -- if not SCall there is no side-effect.
 emitSub (NonTail (Just (VId nm))) o@(SCall (LId lid :-: _ty) ops st)
-  | typeOfOp o == TFloat =
-  let q = emitArgs [] ops in
+  | typeOfOp o == TFloat = do
+  let q = emitArgs [] ops
+  ris <- getRegsFunction st
   return $ 
     saveRegs ris ++
     q ++
-    [Lda rsp (st + length regs) rsp] ++
+    [Lda rsp (st + length ris) rsp] ++
     [Bsr rlr lid] ++ fmov (FReg 0) (fregOfString nm) ++
-    [Lda rsp (- (st + length regs)) rsp] ++
+    [Lda rsp (- (st + length ris)) rsp] ++
     restoreRegs (filter (\(a, _) -> a /= nm) ris)
-  where regs = map show (AsmHelper.gregs ++ [rlr]) ++ map show (AsmHelper.fregs)
-        ris = zip regs [st..]
-emitSub (NonTail (Just (VId nm))) (SCall (LId lid :-: _ty) ops st) =
-  let q = emitArgs [] ops in
+emitSub (NonTail (Just (VId nm))) (SCall (LId lid :-: _ty) ops st) = do
+  ris <- getRegsFunction st
+  let q = emitArgs [] ops
   return $
     saveRegs ris ++
     q ++
-    [Lda rsp (st + length regs) rsp] ++
+    [Lda rsp (st + length ris) rsp] ++
     [Bsr rlr lid] ++ cp "$0" nm ++
-    [Lda rsp (- (st + length regs)) rsp] ++
+    [Lda rsp (- (st + length ris)) rsp] ++
     restoreRegs (filter (\(a, _) -> a /= nm) ris)
-  where regs = map show (AsmHelper.gregs ++ [rlr]) ++ map show (AsmHelper.fregs)
-        ris = zip regs [st..]
 -- SId
 emitSub (NonTail (Just (VId nm))) (SId (OpVar (VId src :-: ty))) =
   case ty of
@@ -203,6 +215,13 @@ emitSub Tail e@(SFNeg {}) = emitSub (NonTail (Just (retReg TFloat))) e
 emitSub Tail e@(SFloatBin {}) = emitSub (NonTail (Just (retReg TFloat))) e
 emitSub Tail e@(SNeg {}) = emitSub (NonTail (Just (retReg TInt))) e
 emitSub (NonTail _x) y = error $ "undefined behavior in emitSub: " ++ show y 
+
+
+getRegsFunction st = do
+  (liveRegs, liveFRegs) <- gets liveRegs
+  let regs = map show (liveRegs ++ [rlr]) ++ map show liveFRegs
+      ris = traceShow regs $ zip regs [st..]
+  return ris
 
 emitParCopy :: ParCopy -> [ZekInst]
 emitParCopy (ParCopy var col) =
