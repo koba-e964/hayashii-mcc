@@ -172,10 +172,10 @@ spillVarSub vidty@(vid@(VId nm) :-: ty) loc (Block blk phi insts term) = do
       return [inst]
   return $ Block blk phi newinsts term
 storeVar :: Typed VId -> Int -> Inst
-storeVar (vid :-: ty) loc = Inst Nothing $ SCall (LId "@store" :-: TFun [ty, TInt] TUnit) [OpVar (vid :-: ty), ci32 loc] 0
+storeVar (vid :-: ty) loc = Inst Nothing $ scall (LId "@store" :-: TFun [ty, TInt] TUnit) [OpVar (vid :-: ty), ci32 loc]
 
 loadVar :: Typed VId -> Int -> Inst
-loadVar (vid :-: ty) loc = Inst (Just vid) $ SCall (LId "@load" :-: TFun [TInt] ty) [ci32 loc] 0
+loadVar (vid :-: ty) loc = Inst (Just vid) $ scall (LId "@load" :-: TFun [TInt] ty) [ci32 loc]
 
 freshId :: M Int
 freshId = do

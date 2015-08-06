@@ -78,6 +78,8 @@ data Op =
   | SFNeg !Operand
   | SCall !(Typed LId) ![Operand] !Int {- stack consumption -}
   deriving (Eq, Show)
+scall :: Typed LId -> [Operand] -> Op -- helper constructer for SCall. This function creates an SCall with the third element 0.
+scall tid ops = SCall tid ops 0
 data Term =
   TRet !Operand
   | TBr !Operand !BlockID !BlockID
@@ -184,7 +186,7 @@ getOperand (expr :-: ty) = case expr of
     argsId <- forM args_ $ \vx -> do
       vty <- lookupTypeInfo vx
       return (OpVar (vx :-: vty))
-    addInst $ Inst (Just fresh) $ SCall (LId funname :-: TFun (clsType : argType) retType)  (clsId : argsId) 0
+    addInst $ Inst (Just fresh) $ scall (LId funname :-: TFun (clsType : argType) retType)  (clsId : argsId)
     return (OpVar (fresh :-: retType))
   CAppDir fun@(LId funname) args_ -> do
     funType@(TFun _ retType) <-
@@ -197,7 +199,7 @@ getOperand (expr :-: ty) = case expr of
     argsId <- forM args_ $ \vx -> do
       vty <- lookupTypeInfo vx
       return (OpVar (vx :-: vty))
-    addInst $ Inst (Just fresh) $ SCall (fun :-: funType) argsId 0
+    addInst $ Inst (Just fresh) $ scall (fun :-: funType) argsId
     return (OpVar (fresh :-: retType))
   CTuple elems -> do
     let TTuple elemTy = ty
@@ -205,7 +207,7 @@ getOperand (expr :-: ty) = case expr of
     let funType = TFun [TInt] retType
     let size = 4 * length elems {- TODO This code assumes that sizeof int, float, ptr are all 4. -}
     fresh <- freshVar retType
-    addInst $ Inst (Just fresh) $ SCall (LId "malloc" :-: funType) [ci32 size] 0
+    addInst $ Inst (Just fresh) $ scall (LId "malloc" :-: funType) [ci32 size]
     forM_ [0 .. length elems - 1] $ \i -> do
       let (argid, argty) = zip elems elemTy !! i
       arrayPut (OpVar (fresh :-: retType)) (ci32 (4 * i)) (OpVar (argid :-: argty))
@@ -213,7 +215,7 @@ getOperand (expr :-: ty) = case expr of
   CLetTuple elems tuple e -> do
     forM_ [0 .. length elems - 1] $ \i -> do
       let (argid, argTy) = elems !! i
-      addInst $ Inst (Just argid) $ SCall (LId "array_get" :-: TFun [TArray TUnit, TInt] argTy) [OpVar (tuple :-: TArray TUnit), ci32 (4 * i)] 0 {- TODO This code assumes that sizeof int, float, ptr are all 4. -}
+      addInst $ Inst (Just argid) $ scall (LId "array_get" :-: TFun [TArray TUnit, TInt] argTy) [OpVar (tuple :-: TArray TUnit), ci32 (4 * i)] {- TODO This code assumes that sizeof int, float, ptr are all 4. -}
     getOperand e
   CGet x y -> do
     xty <- lookupTypeInfo x
@@ -239,14 +241,14 @@ ci32 i = OpConst (IntConst (fromIntegral i))
 
 arrayPut :: MonadState CgenState m => Operand -> Operand -> Operand -> m ()
 arrayPut aryOp idxOp elemOp =
-  addInst $ Inst Nothing $ SCall (LId "array_put" :-: TFun [getType aryOp, TInt, getType elemOp] TUnit)
-    [aryOp, idxOp, elemOp] 0
+  addInst $ Inst Nothing $ scall (LId "array_put" :-: TFun [getType aryOp, TInt, getType elemOp] TUnit)
+    [aryOp, idxOp, elemOp]
 arrayGet :: Operand -> Operand -> StateT CgenState M Operand
 arrayGet aryOp idxOp = do
   let aryTy@(TArray elemTy) = getType aryOp
   fresh <- freshVar　elemTy
-  addInst $ Inst (Just fresh) $ SCall (LId "array_get" :-: TFun [aryTy, TInt] elemTy)
-    [aryOp, idxOp] 0
+  addInst $ Inst (Just fresh) $ scall (LId "array_get" :-: TFun [aryTy, TInt] elemTy)
+    [aryOp, idxOp]
   return (OpVar (fresh :-: elemTy))
 
 emptyPhi :: Phi
