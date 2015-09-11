@@ -158,13 +158,21 @@ emitSub (NonTail (Just (VId nm))) (SArithBin aop (OpVar (VId src :-: _)) (OpCons
         Div -> undefined
   in return $ abstAdd (regOfString src) (fromIntegral val) (regOfString nm)
 -- Negation (-x)
-emitSub (NonTail (Just (VId nm))) (SNeg o@(OpVar (VId _ :-: _))) =
+emitSub (NonTail (Just (VId nm))) (SNeg o@(OpVar (VId _ :-: TInt))) =
   return [Subl (Reg 31) (regimmOfOperand o) (regOfString nm)]
 emitSub (NonTail (Just (VId nm))) (SNeg (OpConst cval)) =
   case cval of
     IntConst i -> emitSub (NonTail (Just (VId nm))) (SId (OpConst (IntConst (- i))))
+    FloatConst f -> emitSub (NonTail (Just (VId nm))) (SId (OpConst (FloatConst (- f))))
     _          -> error $ "SNeg for non-int constant: " ++ show cval 
 -- float binary operation
+emitSub (NonTail (Just (VId nm))) (SFloatBin FDiv (OpVar (VId src1 :-: _)) (OpVar (VId src2 :-: _))) =
+    return $ [Invs (fregOfString src2) frtmp, FOp FOpMul (fregOfString src1) frtmp (fregOfString nm)]
+emitSub (NonTail (Just (VId nm))) (SFloatBin FDiv (OpConst (FloatConst fv1)) (OpVar (VId src2 :-: _))) =
+  let dest = fregOfString nm in
+    return $ [Invs (fregOfString src2) dest] ++ lfi (realToFrac fv1) frtmp ++ [FOp FOpMul dest frtmp dest]
+emitSub (NonTail (Just (VId nm))) (SFloatBin FDiv (OpVar (VId src1 :-: _)) (OpConst (FloatConst fv2))) =
+    return $ lfi (realToFrac (1 / fv2)) frtmp ++ [FOp FOpMul (fregOfString src1) frtmp (fregOfString nm)]
 emitSub (NonTail (Just (VId nm))) (SFloatBin bop (OpVar (VId src1 :-: _)) (OpVar (VId src2 :-: _))) =
   let ctor = case bop of
         FAdd -> FOpAdd
@@ -189,6 +197,9 @@ emitSub (NonTail (Just (VId nm))) (SFloatBin bop (OpConst (FloatConst fv)) (OpVa
         FDiv -> undefined
   in
     return $ lfi (realToFrac fv) frtmp ++ [FOp ctor frtmp (fregOfString src2) (fregOfString nm)]
+-- float negation
+emitSub (NonTail (Just (VId nm))) (SFNeg (OpVar (VId op :-: TFloat))) =
+  return [FOp FOpSub (FReg 31) (fregOfString op) (fregOfString nm)]
 -- float comparison
 emitSub (NonTail (Just (VId nm))) (SCmpBin cop o@(OpVar (VId src1 :-: _)) (OpVar (VId src2 :-: _)))
   | getType o == TFloat =
@@ -196,7 +207,22 @@ emitSub (NonTail (Just (VId nm))) (SCmpBin cop o@(OpVar (VId src1 :-: _)) (OpVar
         Syntax.Eq -> CEQ
         Syntax.LE -> CLE
   in
-    return $ [Cmps ctor (fregOfString src1) (fregOfString src2) (fregOfString nm)] -- TODO nm is integral register
+    return $ [Cmps ctor (fregOfString src1) (fregOfString src2) frtmp, Ftois frtmp (regOfString nm)] -- nm is integral register
+emitSub (NonTail (Just (VId nm))) (SCmpBin Syntax.Eq (OpConst (FloatConst fv1)) (OpVar (VId src2 :-: _))) =
+  return $ lfi (realToFrac fv1) frtmp ++ [Cmps CEQ frtmp (fregOfString src2) frtmp, Ftois frtmp (regOfString nm)] -- nm is integral register
+emitSub (NonTail (Just (VId nm))) (SCmpBin Syntax.LE (OpConst (FloatConst fv1)) (OpVar (VId src2 :-: _))) =
+  let condReg = regOfString nm in
+  return $ lfi (realToFrac fv1) frtmp ++ [Cmps CLT frtmp (fregOfString src2) frtmp, Ftois frtmp condReg
+  ] ++ abstAdd condReg (-1) condReg -- (fv1 <= op) = !(op < fv1) = (op < fv1) - 1
+emitSub (NonTail (Just (VId nm))) (SCmpBin cop (OpVar (VId src1 :-: TFloat)) (OpConst (FloatConst fv2))) =
+  let ctor = case cop of
+        Syntax.Eq -> CEQ
+        Syntax.LE -> CLE
+  in
+    return $ lfi (realToFrac fv2) frtmp ++ [Cmps ctor (fregOfString src1) frtmp frtmp, Ftois frtmp (regOfString nm)] -- nm is integral register
+emitSub (NonTail (Just (VId nm))) c@(SCmpBin cop o1 _)
+  | getType o1 == TFloat =
+    error $ "invalid float comparision" ++ show c
 -- integer comparison
 emitSub (NonTail (Just (VId nm))) (SCmpBin cop (OpVar (VId src :-: _)) op2) =
   let ctor = case cop of
@@ -301,7 +327,7 @@ regOfString s = case List.elemIndex s [fromString $ "$" ++ show i | i <- [0..31 
 fregOfString :: (Eq s, IsString s, Show s) => s -> FReg
 fregOfString s = case List.elemIndex s [fromString $ "$f" ++ show i | i <- [0..31 :: Int]] of
   Just r  -> FReg r
-  Nothing -> error $ "Invalid register name:" ++ show s
+  Nothing -> error $ "Invalid float register name:" ++ show s
 
 maybeRegOfString :: (Eq s, IsString s, Show s) => s -> Maybe Reg
 maybeRegOfString s = case List.elemIndex s [fromString $ "$" ++ show i | i <- [0..31 :: Int]] of

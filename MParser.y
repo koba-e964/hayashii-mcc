@@ -228,4 +228,7 @@ removeComments n (x : ls) = do
 parse :: [Token] -> Either String Syntax
 parse toks = mparse =<< removeComments 0 toks
 
+parseLib :: [Token] -> Either String Library
+parseLib toks = mlibparse =<< removeComments 0 toks
+
 }

@@ -1,8 +1,9 @@
 module Main where
 
 import Control.Monad.Reader (runReader)
-import Control.Monad (forM_, mapM)
+import Control.Monad (forM_, mapM, when)
 import qualified Data.Map as Map
+import qualified Data.Maybe as Maybe
 import System.Console.GetOpt
 import System.Environment
 import System.IO
@@ -10,7 +11,7 @@ import System.IO
 import qualified MLexer
 import Id
 import Type
-import MParser (parse)
+import MParser (parse, parseLib)
 import Typing
 import KNormal (kNormal)
 import Alpha (alpha)
@@ -22,6 +23,7 @@ import SSACSE
 import SSASimpl
 import SSALoop
 import SSAElim
+import Syntax
 import Closure (CVardef, CFundef(..), trans)
 import RegAlloc
 import PhiElim
@@ -65,21 +67,54 @@ extenv = Map.fromList
   ,(Id "int_of_float", TFun [TFloat] TInt)
   ,(Id "truncate", TFun [TFloat] TInt)
   ,(Id "float_of_int", TFun [TInt] TFloat)
+  ,(Id "floor", TFun [TFloat] TFloat)
   ,(Id "print_newline", TFun [TUnit] TUnit)
   ]
 
+processFunction :: Fundef -> [CFundef]
+processFunction (Fundef (Id nm, ty) args_ expr) =
+  let dummyName = "__dummy_unused_identifier_for_process_fundec" in
+  let dummyExp = LetRec (Fundef (Id dummyName, ty) args_ expr) Unit in
+　　let typed = either (error . show) id (typing extenv dummyExp) in
+  let kn = kNormal extenv typed in
+  let al = alpha kn in
+  let (cexp, cfun@CFundef { Closure.name = (VId _, cty) } : rest) = trans al in
+  cfun { Closure.name = (VId ("min_caml_" ++ nm), cty) } : rest
+
+
+processLib :: String -> IO ([CFundef], [CVardef])
+processLib filename = do
+  cont <- readFile filename
+  let lexed = MLexer.lex cont
+  case parseLib lexed of
+    Left err -> fail $ "parse error:" ++ show err
+    Right lib -> do
+      let f x = case x of
+              FunDec fd -> processFunction fd
+              _ -> []
+      let v x = case x of
+              VarDec name expr -> Nothing
+              _ -> Nothing
+  
+      let cfundefs = concatMap f lib
+      let cvardefs = Maybe.catMaybes (map v lib)
+      return (cfundefs, cvardefs)
 repl :: Config -> String -> IO ()
 repl conf str = do
   let lexed = MLexer.lex str
   let syntax = parse lexed
   case syntax of
     Right syn -> do
+      glibs <- mapM processLib (glib conf)
+      let cfundef = concat (map fst glibs)
+      let cvardef = concat (map snd glibs)
+      when (cvardef /= []) $ fail "TODO Vardef is not empty" -- TODO vardef must be processed
 　　　　　　let typed = either (error . show) id (typing extenv syn)
       let kn = kNormal extenv typed
       let al = alpha kn
       let (cexp, cfuns) = trans al
-      let ssa = runReader (runCounterT (ssaTrans cfuns cexp))
-            (Map.fromList (map (\(CFundef {Closure.name = (VId n,ty)}) -> (Id n, ty)) cfuns ++ [(Id ("min_caml_" ++ x), ty) | (Id x, ty) <- Map.assocs extenv]))
+      let ssa = runReader (runCounterT (ssaTrans (cfuns ++ cfundef) cexp))
+            (Map.fromList (map (\(CFundef {Closure.name = (VId n,ty)}) -> (Id n, ty)) (cfuns ++ cfundef) ++ [(Id ("min_caml_" ++ x), ty) | (Id x, ty) <- Map.assocs extenv]))
       putStrLn "ssa:"
       print ssa
       putStrLn "**** optimized SSA ****"
@@ -102,9 +137,6 @@ repl conf str = do
           Inst.emit handle insts
           hClose handle
     Left x -> error x
-
-processLib :: [String] -> IO (TypeEnv, [CVardef])
-processLib = undefined
 
 
 main :: IO ()

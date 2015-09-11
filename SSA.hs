@@ -89,7 +89,7 @@ data Operand = OpVar !(Typed VId) | OpConst !Const
   deriving (Eq)
 
 instance Show Operand where
-  show (OpVar (VId v :-: _)) = "$" ++ v
+  show (OpVar (VId v :-: ty)) = "$" ++ v ++ ":" ++ show ty
   show (OpConst c) = show c
 
 
@@ -322,7 +322,7 @@ typeOfOp e = case e of
   SId o -> getType o
   SArithBin {} -> TInt
   SFloatBin {} -> TFloat
-  SCmpBin _ o1 _ -> getType o1
+  SCmpBin _ o1 _ -> TInt -- the result of comparison is always int
   SNeg {} -> TInt
   SFNeg {} -> TFloat
   SCall (_ :-: TFun _ retTy) _ _ -> retTy

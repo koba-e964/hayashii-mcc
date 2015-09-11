@@ -47,7 +47,7 @@ data CFundef = CFundef
     , body :: !ClosExp
     } deriving (Eq, Show)
 data CVardef = CVardef !Id !Type ClosExp
-
+  deriving (Eq, Show)
 
 data Prog = Prog ![CVardef] ![CFundef] !ClosExp
 

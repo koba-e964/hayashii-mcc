@@ -70,6 +70,7 @@ data ZekInst
   | Invs !FReg !FReg
   | Sqrts !FReg !FReg
   | Itofs !Reg !FReg
+  | Ftois !FReg !Reg
   | Label !Label
   | Comment !String
   | ExtFile !FilePath
@@ -100,6 +101,7 @@ instance Show ZekInst where
     Invs a b -> "\tINVS\t" ++ show a ++ ", " ++ show b
     Sqrts a b -> "\tSQRTS\t" ++ show a ++ ", " ++ show b
     Itofs a b -> "\tITOFS\t" ++ show a ++ ", " ++ show b
+    Ftois a b -> "\tFTOIS\t" ++ show a ++ ", " ++ show b
     Label l -> l ++ ":"
     Comment s -> "    # " ++ s ++ "\n"
     ExtFile filename -> "# warning: show_zek_inst for ExtFile. This part should be replaced with the content of the file:" ++ filename

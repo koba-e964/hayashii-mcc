@@ -3,7 +3,7 @@ DEST = ${PWD}
 CMP   = $(DEST)/bin/hmcc
 ASM   = $(BUILD)assembler
 EXEC  = $(BUILD)executer
-MCCFLAGS = -i -inline 5
+MCCFLAGS = --glib lib/fl.ml
 SAMPLES = sample/ack.ml sample/add.ml \
 sample/cond.ml sample/constexpr.ml \
 sample/fib.ml sample/float-easy.ml sample/float.ml sample/gcd.ml \
@@ -25,7 +25,7 @@ assembler : $(ASM)
 
 
 %.s : %.ml $(CMP)
-	LANG=C.UTF-8 $(CMP) -o $*.s <$*.ml >$*.out
+	LANG=C.UTF-8 $(CMP) $(MCCFLAGS) -o $*.s <$*.ml >$*.out
 clean : 
 	rm -f sample/*.out sample/*.s
 	rm -f $(ASM) $(EXEC)
