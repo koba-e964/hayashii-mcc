@@ -1,5 +1,6 @@
 BUILD = build/
-CMP   = .cabal-sandbox/bin/hmcc
+DEST = ${PWD}
+CMP   = $(DEST)/bin/hmcc
 ASM   = $(BUILD)assembler
 EXEC  = $(BUILD)executer
 MCCFLAGS = -i -inline 5
@@ -16,8 +17,12 @@ sample/shuffle.ml sample/spill.ml sample/spill2.ml sample/spill3.ml sample/sum-t
 #sample/funcomp.ml
 #sample/cls-bug.ml sample/cls-bug2.ml sample/cls-rec.ml \
 #sample/matmul.ml 
-.PHONY: test_all clean
+.PHONY: test_all clean compiler executer assembler
 test_all : $(SAMPLES:%.ml=%.test)
+compiler: $(CMP)
+executer : $(EXEC)
+assembler : $(ASM)
+
 
 %.s : %.ml $(CMP)
 	LANG=C.UTF-8 $(CMP) -o $*.s <$*.ml >$*.out
@@ -40,7 +45,7 @@ clean :
 %-main.s: %-lib.ml %-main.ml $(CMP) $(LIB)
 	$(CMP) $(MCCFLAGS) $(STDLIB) -glib $*-lib $*-main
 $(CMP): 
-	cabal install
+	cabal install --prefix=$(DEST)
 $(ASM): Zekamashi
 	cd Zekamashi/asm; omake
 	cp Zekamashi/asm/asagumo $(ASM)
